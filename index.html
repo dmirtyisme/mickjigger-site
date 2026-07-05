@@ -1,21 +1,43 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Mick Jigger — Your cursor has a story</title>
-<meta name="description" content="Mick Jigger keeps your Mac awake. Move your mouse. Watch it unfold.">
+<title>Mick Jigger — macOS mouse jiggler</title>
+<meta name="description" content="Mick Jigger keeps your Mac awake. A tiny menu bar app.">
 <style>
   :root {
     --bg: #07080A;
     --blue: #2B5BFF;
     --blue-soft: rgba(43, 91, 255, 0.14);
-    --white: #F2F2F2;
+    --text: #F2F2F2;
     --gray: rgba(255, 255, 255, 0.45);
     --gray-dim: rgba(255, 255, 255, 0.28);
     --glass: rgba(20, 20, 22, 0.85);
+    --glass-strong: rgba(28, 28, 30, 0.96);
     --border: rgba(255, 255, 255, 0.08);
+    --menubar-bg: rgba(15, 15, 17, 0.72);
+    --dock-bg: rgba(255, 255, 255, 0.12);
+    --dock-border: rgba(255, 255, 255, 0.2);
+    --hover: rgba(255, 255, 255, 0.09);
+    --row-bg: rgba(255, 255, 255, 0.04);
     --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+  [data-theme="light"] {
+    --bg: #E8E8ED;
+    --blue: #0040FF;
+    --blue-soft: rgba(0, 64, 255, 0.1);
+    --text: #1D1D1F;
+    --gray: rgba(0, 0, 0, 0.5);
+    --gray-dim: rgba(0, 0, 0, 0.32);
+    --glass: rgba(255, 255, 255, 0.7);
+    --glass-strong: rgba(245, 245, 247, 0.97);
+    --border: rgba(0, 0, 0, 0.1);
+    --menubar-bg: rgba(236, 236, 240, 0.85);
+    --dock-bg: rgba(255, 255, 255, 0.45);
+    --dock-border: rgba(0, 0, 0, 0.12);
+    --hover: rgba(0, 0, 0, 0.07);
+    --row-bg: rgba(0, 0, 0, 0.04);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -25,9 +47,10 @@
     overflow: hidden;
     background: var(--bg);
     font-family: var(--font);
-    color: var(--white);
+    color: var(--text);
     -webkit-font-smoothing: antialiased;
     cursor: none;
+    transition: background 0.4s ease, color 0.4s ease;
   }
 
   a, button { cursor: none; }
@@ -39,9 +62,14 @@
     z-index: 0;
     background:
       radial-gradient(1200px 700px at 50% 120%, rgba(43, 91, 255, 0.10), transparent 60%),
-      radial-gradient(900px 500px at 80% -10%, rgba(43, 91, 255, 0.05), transparent 55%),
-      var(--bg);
+      radial-gradient(900px 500px at 80% -10%, rgba(43, 91, 255, 0.05), transparent 55%);
     pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  [data-theme="light"] .ambient {
+    background:
+      radial-gradient(1200px 700px at 50% 120%, rgba(0, 64, 255, 0.07), transparent 60%),
+      radial-gradient(900px 500px at 80% -10%, rgba(0, 64, 255, 0.04), transparent 55%);
   }
 
   /* ---------- Trail canvas ---------- */
@@ -60,7 +88,7 @@
     border-radius: 50%;
     background: var(--blue);
     box-shadow: 0 0 12px rgba(43, 91, 255, 0.9), 0 0 32px rgba(43, 91, 255, 0.35);
-    z-index: 1000;
+    z-index: 2000;
     pointer-events: none;
     transform: translate(-100px, -100px);
     transition: width .15s ease, height .15s ease, margin .15s ease, opacity .3s ease;
@@ -74,6 +102,22 @@
     box-shadow: 0 0 16px rgba(43, 91, 255, 0.6);
   }
 
+  /* ---------- MJ app tile (shared) ---------- */
+  .mj-tile {
+    background: linear-gradient(160deg, #4C77FF 0%, #2B5BFF 50%, #1B3FC4 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .mj-tile span {
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: italic;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: -1px;
+  }
+
   /* ---------- Menu bar ---------- */
   .menubar {
     position: fixed;
@@ -84,232 +128,101 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 12px;
-    background: rgba(15, 15, 17, 0.72);
+    background: var(--menubar-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-bottom: 1px solid var(--border);
     font-size: 13px;
     user-select: none;
+    transform: translateY(-28px);
+    opacity: 0;
+    transition: transform .45s cubic-bezier(0.22, 1, 0.36, 1), opacity .45s ease,
+                background 0.4s ease, border-color 0.4s ease;
   }
+  .menubar.in { transform: translateY(0); opacity: 1; }
   .menubar .left, .menubar .right {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
   }
   .mb-item {
+    display: flex;
+    align-items: center;
     padding: 3px 9px;
     border-radius: 5px;
-    color: rgba(255, 255, 255, 0.85);
-    transition: background .12s ease;
-    white-space: nowrap;
-  }
-  .mb-item:hover { background: rgba(255, 255, 255, 0.09); }
-  .mb-item.app-name { font-weight: 700; }
-  .mb-apple svg { width: 13px; height: 15px; display: block; fill: rgba(255,255,255,0.9); }
-  .mb-icon { display: flex; align-items: center; }
-  .mb-icon svg { width: 16px; height: 16px; fill: rgba(255,255,255,0.75); display: block; }
-
-  /* MJ menu bar icon */
-  #mjMenuIcon {
-    display: flex; align-items: center; justify-content: center;
-    width: 26px; height: 20px;
-    border-radius: 5px;
-    transition: background .12s ease;
-  }
-  #mjMenuIcon:hover, #mjMenuIcon.open { background: rgba(255,255,255,0.12); }
-  #mjMenuIcon .mj-glyph {
-    font-family: Georgia, "Times New Roman", serif;
-    font-style: italic;
-    font-weight: 700;
-    font-size: 12px;
-    color: var(--blue);
-    letter-spacing: -0.5px;
-    text-shadow: 0 0 10px rgba(43, 91, 255, 0.55);
-  }
-
-  /* Language toggle */
-  .lang-toggle {
-    display: flex;
-    align-items: center;
-    background: rgba(255, 255, 255, 0.07);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    overflow: hidden;
-    margin-right: 4px;
-  }
-  .lang-toggle button {
+    color: var(--text);
     border: 0;
     background: transparent;
-    color: var(--gray);
     font-family: var(--font);
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    padding: 3px 8px;
-    transition: color .15s ease, background .15s ease;
-  }
-  .lang-toggle button.active {
-    color: var(--white);
-    background: rgba(43, 91, 255, 0.85);
-  }
-
-  #clock { font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.85); }
-
-  /* ---------- Hero ---------- */
-  .hero {
-    position: fixed;
-    inset: 0;
-    z-index: 5;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 28px 24px 120px;
-    pointer-events: none;
-  }
-  .app-icon {
-    width: 96px; height: 96px;
-    border-radius: 24px;
-    background: linear-gradient(160deg, #4C77FF 0%, var(--blue) 45%, #1B3FC4 100%);
-    box-shadow:
-      0 20px 50px rgba(43, 91, 255, 0.35),
-      inset 0 1px 0 rgba(255, 255, 255, 0.35),
-      inset 0 -8px 20px rgba(0, 0, 30, 0.35);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 34px;
-    animation: iconIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  .app-icon span {
-    font-family: Georgia, "Times New Roman", serif;
-    font-style: italic;
-    font-weight: 700;
-    font-size: 44px;
-    color: #fff;
-    letter-spacing: -2px;
-    text-shadow: 0 2px 12px rgba(0, 0, 40, 0.4);
-    transform: translateX(-2px);
-  }
-  @keyframes iconIn {
-    from { opacity: 0; transform: translateY(18px) scale(0.92); }
-    to   { opacity: 1; transform: translateY(0) scale(1); }
-  }
-
-  .eyebrow {
-    color: var(--blue);
     font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    margin-bottom: 18px;
-    animation: riseIn 0.8s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+    transition: background .12s ease, color 0.4s ease;
+    white-space: nowrap;
   }
-  h1 {
-    font-size: clamp(40px, 7vw, 88px);
-    font-weight: 700;
-    letter-spacing: -0.04em;
-    line-height: 1.02;
-    animation: riseIn 0.8s 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  button.mb-item:hover { background: var(--hover); }
+  .mb-item.app-name { font-weight: 700; }
+
+  /* MJ menu bar icon — miniature app tile */
+  #mjMenuIcon { padding: 3px 6px; }
+  #mjMenuIcon .mj-tile {
+    width: 20px; height: 20px;
+    border-radius: 5px;
   }
-  h1 em {
-    font-style: italic;
-    font-weight: 300;
-    color: rgba(255, 255, 255, 0.55);
+  #mjMenuIcon .mj-tile span { font-size: 10px; letter-spacing: -0.5px; }
+  #mjMenuIcon.open { background: var(--hover); }
+  #mjMenuIcon.pulse .mj-tile {
+    animation: mjPulse 1.6s ease-in-out infinite;
   }
-  .subtitle {
-    margin-top: 22px;
-    font-size: 16px;
-    color: var(--gray);
-    animation: riseIn 0.8s 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  @keyframes riseIn {
-    from { opacity: 0; transform: translateY(14px); }
-    to   { opacity: 1; transform: translateY(0); }
+  @keyframes mjPulse {
+    0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 0 0 rgba(43, 91, 255, 0.6); }
+    50%      { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 14px 4px rgba(43, 91, 255, 0.75); }
   }
 
-  .cta-row {
-    display: flex;
-    gap: 14px;
-    margin-top: 38px;
-    pointer-events: auto;
-    animation: riseIn 0.8s 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
-  }
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-family: var(--font);
-    font-size: 15px;
-    font-weight: 600;
-    padding: 13px 28px;
-    border-radius: 999px;
-    text-decoration: none;
-    transition: transform .18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .18s ease, background .18s ease, border-color .18s ease;
-  }
-  .btn:active { transform: scale(0.97); }
-  .btn-primary {
-    background: var(--blue);
-    color: #fff;
-    box-shadow: 0 8px 28px rgba(43, 91, 255, 0.4);
-  }
-  .btn-primary:hover {
-    background: #3E6BFF;
-    transform: translateY(-2px);
-    box-shadow: 0 14px 36px rgba(43, 91, 255, 0.5);
-  }
-  .btn-ghost {
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--white);
-    border: 1px solid rgba(255, 255, 255, 0.16);
-  }
-  .btn-ghost:hover {
-    background: rgba(255, 255, 255, 0.09);
-    border-color: rgba(255, 255, 255, 0.28);
-    transform: translateY(-2px);
-  }
-  .btn svg { width: 16px; height: 16px; fill: currentColor; }
+  #themeToggle { font-size: 13px; }
+  #clock { font-variant-numeric: tabular-nums; }
 
-  /* ---------- Score HUD ---------- */
-  .hud {
-    position: fixed;
-    right: 22px;
-    bottom: 110px;
-    z-index: 40;
+  /* ---------- Language switcher (macOS input source style) ---------- */
+  .lang-wrap { position: relative; }
+  #langBtn { gap: 5px; font-weight: 600; font-size: 12px; }
+  #langBtn .flag { font-size: 13px; }
+  #langBtn.open { background: var(--hover); }
+  .lang-menu {
+    position: absolute;
+    top: calc(100% + 7px);
+    right: 0;
+    min-width: 170px;
     background: var(--glass);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 14px 20px;
-    min-width: 148px;
-    text-align: right;
+    border-radius: 10px;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+    padding: 5px;
     opacity: 0;
-    transform: translateY(10px);
-    transition: opacity .5s ease, transform .5s cubic-bezier(0.22, 1, 0.36, 1);
+    transform: translateY(-6px) scale(0.98);
+    transform-origin: top right;
     pointer-events: none;
+    transition: opacity .18s ease, transform .18s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.4s ease, border-color 0.4s ease;
   }
-  .hud.visible { opacity: 1; transform: translateY(0); }
-  .hud-label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--blue);
+  .lang-menu.open { opacity: 1; transform: none; pointer-events: auto; }
+  .lang-menu button {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    border: 0;
+    background: transparent;
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--text);
+    padding: 7px 10px;
+    border-radius: 7px;
+    text-align: left;
+    transition: background .12s ease;
   }
-  .hud-score {
-    font-size: 32px;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1.15;
-    font-variant-numeric: tabular-nums;
-  }
-  .hud-meters {
-    font-size: 12px;
-    color: var(--gray);
-    font-variant-numeric: tabular-nums;
-  }
+  .lang-menu button:hover { background: var(--blue); color: #fff; }
+  .lang-menu button .check { margin-left: auto; opacity: 0; font-size: 11px; }
+  .lang-menu button.active .check { opacity: 1; }
 
   /* ---------- Dock ---------- */
   .dock-wrap {
@@ -320,28 +233,27 @@
     display: flex;
     justify-content: center;
     pointer-events: none;
+    transform: translateY(90px);
+    opacity: 0;
+    transition: transform .45s cubic-bezier(0.22, 1, 0.36, 1), opacity .45s ease;
   }
+  .dock-wrap.in { transform: translateY(0); opacity: 1; }
   .dock {
     display: flex;
-    align-items: flex-end;
-    gap: 10px;
-    padding: 9px 12px;
-    background: var(--glass);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 22px;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 14px;
+    background: var(--dock-bg);
+    backdrop-filter: blur(40px) saturate(180%);
+    -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 0.5px solid var(--dock-border);
+    border-radius: 24px;
     pointer-events: auto;
+    transition: background 0.4s ease, border-color 0.4s ease;
   }
   .dock-item {
-    width: 52px; height: 52px;
-    border-radius: 13px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 30px;
-    transform-origin: bottom center;
-    transition: transform .08s linear;
+    width: 56px; height: 56px;
+    flex: 0 0 56px;
     position: relative;
     border: 0;
     background: transparent;
@@ -349,39 +261,32 @@
   }
   .dock-item .tile {
     width: 100%; height: 100%;
-    border-radius: 13px;
+    border-radius: 14px;
     display: flex;
     align-items: center;
     justify-content: center;
     overflow: hidden;
   }
-  .dock-item .tile.finder { background: linear-gradient(180deg, #8EC8FF 0%, #2C7BE5 100%); }
-  .dock-item .tile.mj {
-    background: linear-gradient(160deg, #4C77FF 0%, var(--blue) 50%, #1B3FC4 100%);
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
+  .dock-item .tile.mj { border-radius: 14px; }
+  .dock-item .tile.mj span { font-size: 24px; }
+  .dock-item .tile.notes {
+    background: linear-gradient(180deg, #FDFBF3 0%, #F5EFD8 100%);
+    font-size: 28px;
   }
-  .dock-item .tile.mj span {
-    font-family: Georgia, serif;
-    font-style: italic;
-    font-weight: 700;
-    font-size: 22px;
-    color: #fff;
-    letter-spacing: -1px;
-  }
-  .dock-item .tile.notes { background: linear-gradient(180deg, #FDFBF3 0%, #F5EFD8 100%); font-size: 26px; }
   .dock-item .tile.github { background: #16181C; border: 1px solid rgba(255,255,255,0.1); }
-  .dock-item .tile.github svg { width: 30px; height: 30px; fill: #F2F2F2; }
-  .dock-item .tile svg.finder-face { width: 40px; height: 40px; }
+  .dock-item .tile.github svg { width: 32px; height: 32px; fill: #F2F2F2; }
+  .dock-item .tile.folder { background: transparent; }
+  .dock-item .tile.folder svg { width: 52px; height: 44px; }
 
   .dock-item::after {
     content: "";
     position: absolute;
-    bottom: -7px;
+    bottom: -8px;
     left: 50%;
     transform: translateX(-50%);
     width: 4px; height: 4px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.55);
+    background: var(--gray);
     opacity: 0;
     transition: opacity .2s ease;
   }
@@ -389,13 +294,14 @@
 
   .dock-item .label {
     position: absolute;
-    bottom: calc(100% + 12px);
+    bottom: calc(100% + 14px);
     left: 50%;
     transform: translateX(-50%) translateY(4px);
     background: var(--glass);
     backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--border);
-    color: rgba(255,255,255,0.9);
+    color: var(--text);
     font-size: 12px;
     font-weight: 500;
     padding: 4px 10px;
@@ -406,6 +312,26 @@
     transition: opacity .15s ease, transform .15s ease;
   }
   .dock-item:hover .label { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---------- Boot animation ---------- */
+  #bootIcon {
+    position: fixed;
+    bottom: 22px;
+    left: 50%;
+    margin-left: -28px;
+    width: 56px; height: 56px;
+    border-radius: 14px;
+    z-index: 70;
+    animation: bootBounce .4s ease-in-out 3;
+    transition: opacity .35s ease;
+    pointer-events: none;
+  }
+  #bootIcon span { font-size: 24px; }
+  #bootIcon.gone { opacity: 0; }
+  @keyframes bootBounce {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-38px); }
+  }
 
   /* ---------- Popover ---------- */
   .popover {
@@ -419,29 +345,19 @@
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--border);
     border-radius: 16px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
     padding: 16px;
     opacity: 0;
     transform: translateY(-8px) scale(0.98);
     transform-origin: top right;
     pointer-events: none;
-    transition: opacity .2s ease, transform .2s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity .2s ease, transform .2s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.4s ease, border-color 0.4s ease;
   }
   .popover.open {
     opacity: 1;
     transform: translateY(0) scale(1);
     pointer-events: auto;
-  }
-  .popover::before {
-    content: "";
-    position: absolute;
-    top: -5px;
-    right: 22px;
-    width: 10px; height: 10px;
-    background: var(--glass);
-    border-left: 1px solid var(--border);
-    border-top: 1px solid var(--border);
-    transform: rotate(45deg);
   }
   .pop-head {
     display: flex;
@@ -465,10 +381,11 @@
     align-items: center;
     justify-content: space-between;
     padding: 10px 12px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--row-bg);
     border: 1px solid var(--border);
     border-radius: 11px;
     margin-bottom: 10px;
+    transition: background 0.4s ease, border-color 0.4s ease;
   }
   .status {
     display: flex;
@@ -480,7 +397,7 @@
   .status-dot {
     width: 8px; height: 8px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.25);
+    background: var(--gray-dim);
     transition: background .25s ease, box-shadow .25s ease;
   }
   .status-dot.on {
@@ -488,12 +405,11 @@
     box-shadow: 0 0 10px rgba(48, 209, 88, 0.7);
   }
 
-  /* macOS toggle switch */
   .switch {
     position: relative;
     width: 42px; height: 25px;
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.16);
+    background: var(--gray-dim);
     border: 0;
     padding: 0;
     transition: background .25s ease;
@@ -521,11 +437,12 @@
   }
   .segmented {
     display: flex;
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--row-bg);
     border: 1px solid var(--border);
     border-radius: 9px;
     padding: 2px;
     gap: 2px;
+    transition: background 0.4s ease, border-color 0.4s ease;
   }
   .segmented button {
     flex: 1;
@@ -552,11 +469,12 @@
     margin-top: 4px;
   }
   .stat {
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--row-bg);
     border: 1px solid var(--border);
     border-radius: 10px;
     padding: 9px 6px;
     text-align: center;
+    transition: background 0.4s ease, border-color 0.4s ease;
   }
   .stat .v {
     font-size: 15px;
@@ -580,75 +498,141 @@
     text-align: center;
   }
 
-  /* ---------- Idle overlay ---------- */
-  .idle {
+  /* ---------- Trail Score widget (draggable) ---------- */
+  .widget {
     position: fixed;
-    inset: 0;
-    z-index: 200;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
+    right: 22px;
+    bottom: 110px;
+    z-index: 900;
+    width: 168px;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 10px 16px 14px;
     text-align: center;
-    background: rgba(5, 6, 8, 0.62);
-    backdrop-filter: blur(26px);
-    -webkit-backdrop-filter: blur(26px);
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity .5s ease, transform .5s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.4s ease, border-color 0.4s ease;
+    pointer-events: none;
+    user-select: none;
+    touch-action: none;
+  }
+  .widget.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .widget.dragging { transition: background 0.4s ease, border-color 0.4s ease; }
+  .widget .grip {
+    width: 36px; height: 4px;
+    border-radius: 999px;
+    background: var(--gray-dim);
+    margin: 0 auto 9px;
+  }
+  .widget-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--blue);
+  }
+  .widget-score {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+  .widget-meters {
+    font-size: 12px;
+    color: var(--gray);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Idle mode ---------- */
+  .idle-hint {
+    position: fixed;
+    top: 44px;
+    left: 50%;
+    transform: translate(-50%, -8px);
+    z-index: 120;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 9px 20px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--gray);
+    white-space: nowrap;
     opacity: 0;
     pointer-events: none;
-    transition: opacity .6s ease;
-    padding: 24px;
+    transition: opacity .6s ease, transform .6s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.4s ease, border-color 0.4s ease;
   }
-  .idle.show { opacity: 1; }
-  .idle h2 {
-    font-size: clamp(30px, 4.6vw, 54px);
-    font-weight: 700;
-    letter-spacing: -0.035em;
-    line-height: 1.1;
-  }
-  .idle h2 .blue { color: var(--blue); }
-  .idle p {
-    margin-top: 16px;
-    font-size: 16px;
-    color: var(--gray);
-  }
-  .synthetic {
-    position: relative;
-    width: 220px;
-    height: 110px;
-    margin-top: 46px;
-  }
-  .synthetic .dot {
-    position: absolute;
+  .idle-hint .mj-word { color: var(--blue); font-weight: 700; }
+  body.idle .idle-hint { opacity: 1; transform: translate(-50%, 0); }
+
+  #synthCursor {
+    position: fixed;
     top: 0; left: 0;
     width: 10px; height: 10px;
     border-radius: 50%;
     background: var(--blue);
     box-shadow: 0 0 14px rgba(43, 91, 255, 0.95), 0 0 40px rgba(43, 91, 255, 0.4);
-    animation: jiggle 4.5s ease-in-out infinite;
+    z-index: 110;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .8s ease;
   }
-  .synthetic .dot::after {
-    content: "";
-    position: absolute;
-    inset: -14px;
-    border-radius: 50%;
-    background: radial-gradient(circle, rgba(43, 91, 255, 0.35) 0%, transparent 70%);
-  }
-  .synthetic .path-hint {
-    position: absolute;
-    inset: 0;
-    border: 1px dashed rgba(43, 91, 255, 0.18);
-    border-radius: 60px;
-  }
-  @keyframes jiggle {
-    0%   { transform: translate(14px, 76px); }
-    18%  { transform: translate(150px, 18px); }
-    36%  { transform: translate(196px, 68px); }
-    55%  { transform: translate(96px, 92px); }
-    74%  { transform: translate(46px, 12px); }
-    100% { transform: translate(14px, 76px); }
+  body.idle #synthCursor { opacity: 1; animation: drift 16s ease-in-out infinite; }
+  @keyframes drift {
+    0%   { transform: translate(12vw, 68vh); }
+    20%  { transform: translate(34vw, 30vh); }
+    40%  { transform: translate(66vw, 52vh); }
+    60%  { transform: translate(84vw, 24vh); }
+    80%  { transform: translate(48vw, 74vh); }
+    100% { transform: translate(12vw, 68vh); }
   }
 
-  /* ---------- Notes modal ---------- */
+  /* ---------- Folder stack ---------- */
+  .stack {
+    position: fixed;
+    bottom: 92px;
+    left: 50%;
+    z-index: 90;
+    pointer-events: none;
+  }
+  .stack .card {
+    position: absolute;
+    bottom: 0;
+    left: -80px;
+    width: 160px;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
+    padding: 12px 14px;
+    text-align: left;
+    font-family: var(--font);
+    opacity: 0;
+    transform: translateY(24px) scale(0.9);
+    transition: opacity .28s ease, transform .32s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.4s ease, border-color 0.4s ease;
+    pointer-events: none;
+  }
+  .stack.open .card { opacity: 1; pointer-events: auto; }
+  .stack.open .card:nth-child(1) { transform: translate(-116px, -12px) rotate(-5deg); transition-delay: 0s; }
+  .stack.open .card:nth-child(2) { transform: translate(0, -34px) rotate(0deg); transition-delay: .05s; z-index: 2; }
+  .stack.open .card:nth-child(3) { transform: translate(116px, -12px) rotate(5deg); transition-delay: .1s; }
+  .stack .card:hover { border-color: var(--blue); }
+  .stack .card .card-emoji { font-size: 20px; margin-bottom: 6px; }
+  .stack .card .card-title { font-size: 13px; font-weight: 700; color: var(--text); }
+  .stack .card .card-sub { font-size: 11px; color: var(--gray); margin-top: 2px; line-height: 1.35; }
+
+  /* ---------- Doc modal (Notes-style window) ---------- */
   .modal-backdrop {
     position: fixed;
     inset: 0;
@@ -659,36 +643,38 @@
     transition: opacity .25s ease;
   }
   .modal-backdrop.open { opacity: 1; pointer-events: auto; }
-  .notes-window {
+  .doc-window {
     position: fixed;
     top: 50%; left: 50%;
     z-index: 160;
     width: min(460px, calc(100vw - 40px));
-    background: rgba(28, 28, 30, 0.96);
+    background: var(--glass-strong);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border: 1px solid var(--border);
     border-radius: 12px;
-    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.55);
     opacity: 0;
     transform: translate(-50%, -46%) scale(0.96);
     pointer-events: none;
-    transition: opacity .25s ease, transform .25s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity .25s ease, transform .25s cubic-bezier(0.22, 1, 0.36, 1),
+                background 0.4s ease, border-color 0.4s ease;
     overflow: hidden;
   }
-  .notes-window.open {
+  .doc-window.open {
     opacity: 1;
     transform: translate(-50%, -50%) scale(1);
     pointer-events: auto;
   }
-  .notes-titlebar {
+  .doc-titlebar {
     display: flex;
     align-items: center;
     height: 40px;
     padding: 0 14px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--row-bg);
     border-bottom: 1px solid var(--border);
     position: relative;
+    transition: background 0.4s ease, border-color 0.4s ease;
   }
   .traffic { display: flex; gap: 8px; }
   .traffic button {
@@ -702,32 +688,35 @@
   .traffic .red { background: #FF5F57; }
   .traffic .yellow { background: #FEBC2E; }
   .traffic .green { background: #28C840; }
-  .notes-title {
+  .doc-title {
     position: absolute;
     left: 50%;
     transform: translateX(-50%);
     font-size: 13px;
     font-weight: 600;
-    color: rgba(255, 255, 255, 0.75);
+    color: var(--gray);
     white-space: nowrap;
+    max-width: 70%;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
-  .notes-body { padding: 22px 26px 24px; }
-  .notes-body ol {
+  .doc-body { padding: 22px 26px 24px; }
+  .doc-body ol {
     list-style: none;
     counter-reset: step;
     display: flex;
     flex-direction: column;
     gap: 13px;
   }
-  .notes-body li {
+  .doc-body ol li {
     counter-increment: step;
     position: relative;
     padding-left: 35px;
     font-size: 14px;
     line-height: 1.5;
-    color: rgba(255, 255, 255, 0.82);
+    color: var(--text);
   }
-  .notes-body li::before {
+  .doc-body ol li::before {
     content: counter(step);
     position: absolute;
     left: 0;
@@ -744,8 +733,30 @@
     border: 1px solid rgba(43, 91, 255, 0.35);
     border-radius: 50%;
   }
-  .notes-body li strong { color: var(--white); font-weight: 600; }
-  .notes-version {
+  .doc-body ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+  .doc-body ul li {
+    position: relative;
+    padding-left: 22px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .doc-body ul li::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 8px;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--blue);
+  }
+  .doc-body strong { color: var(--text); font-weight: 600; }
+  .doc-version {
     margin-top: 20px;
     padding-top: 14px;
     border-top: 1px solid var(--border);
@@ -757,11 +768,10 @@
 
   /* ---------- Responsive ---------- */
   @media (max-width: 640px) {
-    .menubar .mb-menus { display: none; }
-    .hud { right: 14px; bottom: 96px; padding: 11px 16px; min-width: 120px; }
-    .hud-score { font-size: 24px; }
-    .dock-item { width: 44px; height: 44px; }
-    .cta-row { flex-direction: column; align-items: center; }
+    .widget { right: 14px; bottom: 96px; width: 144px; }
+    .widget-score { font-size: 26px; }
+    .dock-item { width: 48px; height: 48px; flex-basis: 48px; }
+    .idle-hint { white-space: normal; text-align: center; max-width: calc(100vw - 48px); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -774,80 +784,63 @@
 <div class="ambient"></div>
 <canvas id="trail"></canvas>
 <div id="cursor"></div>
+<div id="synthCursor"></div>
+
+<!-- ============ Boot icon ============ -->
+<div id="bootIcon" class="mj-tile"><span>MJ</span></div>
 
 <!-- ============ Menu bar ============ -->
-<header class="menubar">
+<header class="menubar" id="menubar">
   <div class="left">
-    <div class="mb-item mb-apple" aria-hidden="true">
-      <svg viewBox="0 0 814 1000"><path d="M788 341c-6 4-107 61-107 187 0 146 128 198 132 199-1 3-20 71-67 141-42 61-86 122-153 122s-84-39-161-39c-75 0-102 40-163 40s-104-57-153-127C60 782 14 660 14 544c0-186 121-285 240-285 63 0 116 42 156 42 38 0 97-44 169-44 27 0 125 2 209 84zM554 172c30-36 51-85 51-135 0-7-1-14-2-19-49 2-107 33-142 73-27 31-53 80-53 130 0 8 1 15 2 18 3 1 8 1 13 1 44 0 99-29 131-68z"/></svg>
-    </div>
-    <div class="mb-item app-name">Finder</div>
-    <div class="mb-menus" style="display:flex;gap:4px;">
-      <div class="mb-item" data-i18n="menuFile">File</div>
-      <div class="mb-item" data-i18n="menuEdit">Edit</div>
-      <div class="mb-item" data-i18n="menuView">View</div>
-    </div>
+    <div class="mb-item app-name">MickJigger</div>
   </div>
   <div class="right">
-    <div class="lang-toggle" role="group" aria-label="Language">
-      <button id="langEn" class="active">EN</button>
-      <button id="langUa">UA</button>
+    <div class="lang-wrap">
+      <button class="mb-item" id="langBtn" aria-haspopup="true" aria-expanded="false">
+        <span class="flag" id="langFlag">🇬🇧</span><span id="langCode">EN</span>
+      </button>
+      <div class="lang-menu" id="langMenu" role="menu">
+        <button data-lang="en" class="active"><span>🇬🇧</span><span>English</span><span class="check">✓</span></button>
+        <button data-lang="ua"><span>🇺🇦</span><span>Українська</span><span class="check">✓</span></button>
+      </div>
     </div>
-    <button id="mjMenuIcon" class="mb-item" aria-label="Mick Jigger" style="border:0;background:transparent;">
-      <span class="mj-glyph">MJ</span>
+    <button class="mb-item" id="mjMenuIcon" aria-label="Mick Jigger">
+      <span class="mj-tile"><span>MJ</span></span>
     </button>
-    <div class="mb-item mb-icon" aria-hidden="true">
-      <svg viewBox="0 0 16 16"><path d="M8 12.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM8 9c-1.3 0-2.5.5-3.4 1.3a.6.6 0 0 0 0 .9l.7.7c.2.2.6.3.8 0A2.9 2.9 0 0 1 8 11.2c.7 0 1.4.3 1.9.7.2.3.6.2.8 0l.7-.7a.6.6 0 0 0 0-.9A5.2 5.2 0 0 0 8 9zm0-3.5c-2.2 0-4.3.9-5.8 2.3a.6.6 0 0 0 0 .9l.7.7c.2.2.6.2.8 0A6.5 6.5 0 0 1 8 7.8c1.7 0 3.2.6 4.3 1.6.2.2.6.2.8 0l.7-.7a.6.6 0 0 0 0-.9A8.3 8.3 0 0 0 8 5.5zM8 2C4.9 2 2 3.2 0 5.2a.6.6 0 0 0 0 .9l.7.7c.2.2.6.2.8 0A9.7 9.7 0 0 1 8 4.3c2.5 0 4.8 1 6.5 2.5.2.2.6.2.8 0l.7-.7a.6.6 0 0 0 0-.9C14 3.2 11.1 2 8 2z"/></svg>
-    </div>
-    <div class="mb-item mb-icon" aria-hidden="true">
-      <svg viewBox="0 0 28 14"><rect x="0.5" y="0.5" width="23" height="13" rx="3.5" fill="none" stroke="rgba(255,255,255,0.5)"/><rect x="2.5" y="2.5" width="16" height="9" rx="1.5"/><path d="M25.5 4.5v5c1.2-.3 2-1.3 2-2.5s-.8-2.2-2-2.5z"/></svg>
-    </div>
+    <button class="mb-item" id="themeToggle" aria-label="Toggle theme">🌙</button>
     <div class="mb-item" id="clock">—</div>
   </div>
 </header>
 
-<!-- ============ Hero ============ -->
-<main class="hero">
-  <div class="app-icon"><span>MJ</span></div>
-  <div class="eyebrow" data-i18n="eyebrow">Mick Jigger for macOS</div>
-  <h1 id="heroTitle">Your cursor<br>has <em>a story</em></h1>
-  <p class="subtitle" data-i18n="subtitle">Move your mouse. Watch it unfold.</p>
-  <div class="cta-row">
-    <a class="btn btn-primary" href="https://github.com/dmirtyisme/mick-jigger/releases/latest" target="_blank" rel="noopener">
-      <svg viewBox="0 0 16 16"><path d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1zM2 12.25a.75.75 0 0 1 .75.75v.5c0 .14.11.25.25.25h10a.25.25 0 0 0 .25-.25v-.5a.75.75 0 0 1 1.5 0v.5A1.75 1.75 0 0 1 13 15.25H3a1.75 1.75 0 0 1-1.75-1.75v-.5A.75.75 0 0 1 2 12.25z"/></svg>
-      <span data-i18n="ctaDownload">Download</span>
-    </a>
-    <a class="btn btn-ghost" href="https://github.com/dmirtyisme/mick-jigger" target="_blank" rel="noopener">
-      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-      <span>GitHub</span>
-    </a>
-  </div>
-</main>
-
-<!-- ============ Score HUD ============ -->
-<aside class="hud" id="hud">
-  <div class="hud-label" data-i18n="hudLabel">Trail Score</div>
-  <div class="hud-score" id="hudScore">0</div>
-  <div class="hud-meters" id="hudMeters">0.0 m moved</div>
+<!-- ============ Trail Score widget ============ -->
+<aside class="widget" id="widget">
+  <div class="grip" aria-hidden="true"></div>
+  <div class="widget-label" data-i18n="hudLabel">Trail Score</div>
+  <div class="widget-score" id="hudScore">0</div>
+  <div class="widget-meters" id="hudMeters">0.0 m moved</div>
 </aside>
 
 <!-- ============ Dock ============ -->
-<nav class="dock-wrap">
+<nav class="dock-wrap" id="dockWrap">
   <div class="dock" id="dock">
-    <button class="dock-item running" id="dockFinder" aria-label="Finder">
-      <span class="label">Finder</span>
-      <span class="tile finder">
-        <svg class="finder-face" viewBox="0 0 100 100">
-          <path d="M50 8 C 46 30, 44 52, 46 88" fill="none" stroke="rgba(10,40,90,0.55)" stroke-width="4"/>
-          <circle cx="32" cy="40" r="4.5" fill="#0A2A5A"/>
-          <circle cx="68" cy="40" r="4.5" fill="#0A2A5A"/>
-          <path d="M24 62 Q 50 78 76 62" fill="none" stroke="#0A2A5A" stroke-width="4.5" stroke-linecap="round"/>
-        </svg>
-      </span>
-    </button>
     <button class="dock-item" id="dockMj" aria-label="Mick Jigger">
       <span class="label">Mick Jigger</span>
-      <span class="tile mj"><span>MJ</span></span>
+      <span class="tile mj mj-tile"><span>MJ</span></span>
+    </button>
+    <button class="dock-item" id="dockFolder" aria-label="Releases">
+      <span class="label" data-i18n="dockFolder">Releases</span>
+      <span class="tile folder">
+        <svg viewBox="0 0 100 84">
+          <path d="M6 14 a8 8 0 0 1 8-8 h22 l8 9 h36 a8 8 0 0 1 8 8 v6 H6 z" fill="#4A9DEB"/>
+          <rect x="6" y="24" width="88" height="54" rx="8" fill="url(#folderGrad)"/>
+          <defs>
+            <linearGradient id="folderGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#7CC2F7"/>
+              <stop offset="1" stop-color="#3E8FE0"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </span>
     </button>
     <button class="dock-item" id="dockNotes" aria-label="Notes">
       <span class="label" data-i18n="dockNotes">Getting Started</span>
@@ -861,6 +854,25 @@
     </button>
   </div>
 </nav>
+
+<!-- ============ Folder stack ============ -->
+<div class="stack" id="stack">
+  <button class="card" data-doc="v100">
+    <div class="card-emoji">📄</div>
+    <div class="card-title">v1.0.0</div>
+    <div class="card-sub" data-i18n="card1Sub">Initial release</div>
+  </button>
+  <button class="card" data-doc="v110">
+    <div class="card-emoji">📄</div>
+    <div class="card-title">v1.1.0</div>
+    <div class="card-sub" data-i18n="card2Sub">Activity tracking + Trail</div>
+  </button>
+  <button class="card" data-doc="readme">
+    <div class="card-emoji">📖</div>
+    <div class="card-title">README</div>
+    <div class="card-sub" data-i18n="card3Sub">Getting started</div>
+  </button>
+</div>
 
 <!-- ============ MJ Popover ============ -->
 <div class="popover" id="popover" role="dialog" aria-label="Mick Jigger">
@@ -891,36 +903,23 @@
   <p class="pop-foot" data-i18n="popFoot">Mick Jigger prevents your Mac from sleeping</p>
 </div>
 
-<!-- ============ Idle overlay ============ -->
-<div class="idle" id="idle">
-  <h2 id="idleTitle">Your Mac would go<br><span class="blue">idle right now.</span></h2>
-  <p data-i18n="idleSub">Mick Jigger prevents that — automatically.</p>
-  <div class="synthetic" aria-hidden="true">
-    <div class="path-hint"></div>
-    <div class="dot"></div>
-  </div>
-</div>
+<!-- ============ Idle hint ============ -->
+<div class="idle-hint" id="idleHint"><span data-i18n="idleHint"><span class="mj-word">Mick Jigger</span> is keeping your Mac awake</span></div>
 
-<!-- ============ Notes modal ============ -->
+<!-- ============ Doc modal ============ -->
 <div class="modal-backdrop" id="modalBackdrop"></div>
-<div class="notes-window" id="notesWindow" role="dialog" aria-modal="true" aria-label="Getting started">
-  <div class="notes-titlebar">
+<div class="doc-window" id="docWindow" role="dialog" aria-modal="true">
+  <div class="doc-titlebar">
     <div class="traffic">
-      <button class="red" id="notesClose" aria-label="Close"></button>
+      <button class="red" id="docClose" aria-label="Close"></button>
       <button class="yellow" aria-label="Minimize"></button>
       <button class="green" aria-label="Zoom"></button>
     </div>
-    <span class="notes-title" data-i18n="notesTitle">Mick Jigger — Getting Started</span>
+    <span class="doc-title" id="docTitle"></span>
   </div>
-  <div class="notes-body">
-    <ol id="notesSteps">
-      <li data-i18n="step1">Download the DMG from <strong>mickjigger.app</strong></li>
-      <li data-i18n="step2">Move <strong>Mick Jigger</strong> to Applications</li>
-      <li data-i18n="step3">Grant <strong>Accessibility</strong> permission</li>
-      <li data-i18n="step4">Grant <strong>Input Monitoring</strong> for activity tracking</li>
-      <li data-i18n="step5">Click the <strong>MJ</strong> icon in the menu bar to activate</li>
-    </ol>
-    <div class="notes-version">
+  <div class="doc-body">
+    <div id="docContent"></div>
+    <div class="doc-version">
       <span>Mick Jigger</span>
       <span>v1.1.0</span>
     </div>
@@ -934,13 +933,9 @@
   /* ================= i18n ================= */
   var I18N = {
     en: {
-      menuFile: "File", menuEdit: "Edit", menuView: "View",
-      eyebrow: "Mick Jigger for macOS",
-      heroTitle: "Your cursor<br>has <em>a story</em>",
-      subtitle: "Move your mouse. Watch it unfold.",
-      ctaDownload: "Download",
       hudLabel: "Trail Score",
       metersMoved: " m moved",
+      dockFolder: "Releases",
       dockNotes: "Getting Started",
       statusInactive: "Inactive", statusActive: "Active",
       intervalLabel: "Jiggle interval",
@@ -948,23 +943,15 @@
       activityLabel: "Activity",
       statSession: "Session", statJiggles: "Jiggles", statDistance: "Moved",
       popFoot: "Mick Jigger prevents your Mac from sleeping",
-      idleTitle: 'Your Mac would go<br><span class="blue">idle right now.</span>',
-      idleSub: "Mick Jigger prevents that — automatically.",
-      notesTitle: "Mick Jigger — Getting Started",
-      step1: 'Download the DMG from <strong>mickjigger.app</strong>',
-      step2: 'Move <strong>Mick Jigger</strong> to Applications',
-      step3: 'Grant <strong>Accessibility</strong> permission',
-      step4: 'Grant <strong>Input Monitoring</strong> for activity tracking',
-      step5: 'Click the <strong>MJ</strong> icon in the menu bar to activate'
+      idleHint: '<span class="mj-word">Mick Jigger</span> is keeping your Mac awake',
+      card1Sub: "Initial release",
+      card2Sub: "Activity tracking + Trail",
+      card3Sub: "Getting started"
     },
     ua: {
-      menuFile: "Файл", menuEdit: "Редагувати", menuView: "Перегляд",
-      eyebrow: "Mick Jigger для macOS",
-      heroTitle: "Твій курсор<br>має <em>історію</em>",
-      subtitle: "Рухай мишею. Дивись, як вона оживає.",
-      ctaDownload: "Завантажити",
       hudLabel: "Рахунок сліду",
       metersMoved: " м пройдено",
+      dockFolder: "Релізи",
       dockNotes: "Початок роботи",
       statusInactive: "Неактивний", statusActive: "Активний",
       intervalLabel: "Інтервал джиґлу",
@@ -972,17 +959,78 @@
       activityLabel: "Активність",
       statSession: "Сесія", statJiggles: "Джиґли", statDistance: "Шлях",
       popFoot: "Mick Jigger не дає вашому Mac заснути",
-      idleTitle: 'Твій Mac зараз би<br><span class="blue">заснув.</span>',
-      idleSub: "Mick Jigger цьому запобігає — автоматично.",
-      notesTitle: "Mick Jigger — Початок роботи",
-      step1: 'Завантажте DMG з <strong>mickjigger.app</strong>',
-      step2: 'Перетягніть <strong>Mick Jigger</strong> у Програми',
-      step3: 'Надайте дозвіл <strong>Універсальний доступ</strong>',
-      step4: 'Надайте <strong>Моніторинг вводу</strong> для відстеження активності',
-      step5: 'Натисніть іконку <strong>MJ</strong> у рядку меню, щоб активувати'
+      idleHint: '<span class="mj-word">Mick Jigger</span> тримає ваш Mac активним',
+      card1Sub: "Перший реліз",
+      card2Sub: "Відстеження активності + Слід",
+      card3Sub: "Початок роботи"
     }
   };
+
+  var DOCS = {
+    en: {
+      readme: {
+        title: "README — Getting Started",
+        html: '<ol>' +
+          '<li>Download the DMG from <strong>mickjigger.app</strong></li>' +
+          '<li>Move <strong>Mick Jigger</strong> to Applications</li>' +
+          '<li>Grant <strong>Accessibility</strong> permission</li>' +
+          '<li>Grant <strong>Input Monitoring</strong> for activity tracking</li>' +
+          '<li>Click the <strong>MJ</strong> icon in the menu bar to activate</li>' +
+        '</ol>'
+      },
+      v100: {
+        title: "v1.0.0 — Initial release",
+        html: '<ul>' +
+          '<li>Menu bar app with one-click activation</li>' +
+          '<li>Adjustable jiggle interval: <strong>30s, 1, 2 or 5 minutes</strong></li>' +
+          '<li>Prevents sleep and screen saver while active</li>' +
+          '<li>Launch at login option</li>' +
+        '</ul>'
+      },
+      v110: {
+        title: "v1.1.0 — Activity tracking + Trail",
+        html: '<ul>' +
+          '<li>New <strong>Activity Tracking</strong> module: session time, jiggle count, distance moved</li>' +
+          '<li>Cursor trail visualization</li>' +
+          '<li>Improved idle detection</li>' +
+          '<li>Bug fixes and performance improvements</li>' +
+        '</ul>'
+      }
+    },
+    ua: {
+      readme: {
+        title: "README — Початок роботи",
+        html: '<ol>' +
+          '<li>Завантажте DMG з <strong>mickjigger.app</strong></li>' +
+          '<li>Перетягніть <strong>Mick Jigger</strong> у Програми</li>' +
+          '<li>Надайте дозвіл <strong>Універсальний доступ</strong></li>' +
+          '<li>Надайте <strong>Моніторинг вводу</strong> для відстеження активності</li>' +
+          '<li>Натисніть іконку <strong>MJ</strong> у рядку меню, щоб активувати</li>' +
+        '</ol>'
+      },
+      v100: {
+        title: "v1.0.0 — Перший реліз",
+        html: '<ul>' +
+          '<li>Застосунок у рядку меню з активацією в один клік</li>' +
+          '<li>Налаштовуваний інтервал джиґлу: <strong>30с, 1, 2 або 5 хвилин</strong></li>' +
+          '<li>Запобігає сну та заставці, поки активний</li>' +
+          '<li>Запуск під час входу в систему</li>' +
+        '</ul>'
+      },
+      v110: {
+        title: "v1.1.0 — Відстеження активності + Слід",
+        html: '<ul>' +
+          '<li>Новий модуль <strong>відстеження активності</strong>: час сесії, кількість джиґлів, відстань</li>' +
+          '<li>Візуалізація сліду курсора</li>' +
+          '<li>Покращене виявлення бездіяльності</li>' +
+          '<li>Виправлення помилок і оптимізація</li>' +
+        '</ul>'
+      }
+    }
+  };
+
   var lang = "en";
+  var currentDoc = null;
 
   function applyLang() {
     var dict = I18N[lang];
@@ -991,17 +1039,64 @@
       var key = el.getAttribute("data-i18n");
       if (dict[key] !== undefined) el.innerHTML = dict[key];
     });
-    document.getElementById("heroTitle").innerHTML = dict.heroTitle;
-    document.getElementById("idleTitle").innerHTML = dict.idleTitle;
-    // status text depends on current toggle state
     document.getElementById("statusText").textContent = mjActive ? dict.statusActive : dict.statusInactive;
-    document.getElementById("langEn").classList.toggle("active", lang === "en");
-    document.getElementById("langUa").classList.toggle("active", lang === "ua");
+    document.getElementById("langFlag").textContent = lang === "ua" ? "🇺🇦" : "🇬🇧";
+    document.getElementById("langCode").textContent = lang === "ua" ? "UA" : "EN";
+    langMenu.querySelectorAll("button").forEach(function (b) {
+      b.classList.toggle("active", b.getAttribute("data-lang") === lang);
+    });
+    if (currentDoc) renderDoc(currentDoc);
     updateHud();
     renderClock();
   }
-  document.getElementById("langEn").addEventListener("click", function () { lang = "en"; applyLang(); });
-  document.getElementById("langUa").addEventListener("click", function () { lang = "ua"; applyLang(); });
+
+  /* ---- Language dropdown ---- */
+  var langBtn = document.getElementById("langBtn");
+  var langMenu = document.getElementById("langMenu");
+
+  function toggleLangMenu(force) {
+    var open = force !== undefined ? force : !langMenu.classList.contains("open");
+    langMenu.classList.toggle("open", open);
+    langBtn.classList.toggle("open", open);
+    langBtn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  langBtn.addEventListener("click", function (e) { e.stopPropagation(); toggleLangMenu(); });
+  langMenu.addEventListener("click", function (e) {
+    var btn = e.target.closest("button[data-lang]");
+    if (!btn) return;
+    e.stopPropagation();
+    lang = btn.getAttribute("data-lang");
+    applyLang();
+    toggleLangMenu(false);
+  });
+
+  /* ================= Theme ================= */
+  var THEME_KEY = "mj-theme";
+  var themeToggle = document.getElementById("themeToggle");
+
+  function autoTheme() {
+    var h = new Date().getHours();
+    return (h >= 6 && h < 20) ? "light" : "dark";
+  }
+  function applyTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    themeToggle.textContent = t === "light" ? "☀️" : "🌙";
+  }
+  var storedTheme = null;
+  try { storedTheme = localStorage.getItem(THEME_KEY); } catch (e) {}
+  applyTheme(storedTheme === "light" || storedTheme === "dark" ? storedTheme : autoTheme());
+
+  themeToggle.addEventListener("click", function () {
+    var next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+    applyTheme(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+  });
+  // Follow the clock unless the user chose manually
+  setInterval(function () {
+    var stored = null;
+    try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+    if (!stored) applyTheme(autoTheme());
+  }, 60000);
 
   /* ================= Clock ================= */
   var clockEl = document.getElementById("clock");
@@ -1017,6 +1112,20 @@
     renderClock();
     setInterval(renderClock, 60000);
   }, (60 - new Date().getSeconds()) * 1000);
+
+  /* ================= Boot sequence ================= */
+  var bootIcon = document.getElementById("bootIcon");
+  var menubar = document.getElementById("menubar");
+  var dockWrap = document.getElementById("dockWrap");
+
+  setTimeout(function () { menubar.classList.add("in"); }, 1200);
+  setTimeout(function () {
+    dockWrap.classList.add("in");
+    bootIcon.classList.add("gone");
+  }, 1650);
+  setTimeout(function () {
+    if (bootIcon.parentNode) bootIcon.parentNode.removeChild(bootIcon);
+  }, 2100);
 
   /* ================= Trail canvas ================= */
   var canvas = document.getElementById("trail");
@@ -1035,13 +1144,16 @@
   resize();
   window.addEventListener("resize", resize);
 
-  var prev = null;      // previous point {x, y, t}
-  var prevMid = null;   // previous midpoint for smooth beziers
+  var prev = null;
+  var prevMid = null;
   var totalPx = 0;
   var moved = false;
 
-  // px → meters (assume ~96 dpi: 1px ≈ 0.264583 mm)
-  var PX_TO_M = 0.000264583;
+  var PX_TO_M = 0.000264583; // ~96 dpi
+
+  function trailRGB() {
+    return document.documentElement.getAttribute("data-theme") === "light" ? "0, 64, 255" : "74, 126, 255";
+  }
 
   function drawSegment(x, y) {
     var now = performance.now();
@@ -1055,25 +1167,22 @@
     if (dist < 1) return;
 
     var dt = Math.max(now - prev.t, 1);
-    var speed = dist / dt; // px per ms
+    var speed = dist / dt;
     totalPx += dist;
 
-    // Speed shapes the stroke: fast = thick & bright
     var w = Math.min(1.2 + speed * 3.2, 9);
     var a = Math.min(0.18 + speed * 0.5, 0.95);
-
+    var rgb = trailRGB();
     var mid = { x: (prev.x + x) / 2, y: (prev.y + y) / 2 };
 
-    // Outer glow pass
-    ctx.strokeStyle = "rgba(43, 91, 255, " + (a * 0.28).toFixed(3) + ")";
+    ctx.strokeStyle = "rgba(" + rgb + ", " + (a * 0.28).toFixed(3) + ")";
     ctx.lineWidth = w * 2.6;
     ctx.beginPath();
     ctx.moveTo(prevMid.x, prevMid.y);
     ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
     ctx.stroke();
 
-    // Core pass
-    ctx.strokeStyle = "rgba(72, 116, 255, " + a.toFixed(3) + ")";
+    ctx.strokeStyle = "rgba(" + rgb + ", " + a.toFixed(3) + ")";
     ctx.lineWidth = w;
     ctx.beginPath();
     ctx.moveTo(prevMid.x, prevMid.y);
@@ -1085,12 +1194,11 @@
 
     if (!moved) {
       moved = true;
-      hud.classList.add("visible");
+      widget.classList.add("visible");
     }
     updateHud();
   }
 
-  // Slow fade — erase alpha so the ambient background stays visible
   function fadeLoop() {
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -1104,14 +1212,14 @@
 
   /* ================= Custom cursor ================= */
   var cursorEl = document.getElementById("cursor");
-  var HOVERABLE = "a, button, .dock-item, .switch, .segmented button, .lang-toggle button, .traffic button";
+  var HOVERABLE = "a, button, .dock-item, .switch, .segmented button, .traffic button, .card, .widget";
 
   document.addEventListener("mouseover", function (e) {
     cursorEl.classList.toggle("hover", !!e.target.closest(HOVERABLE));
   });
 
-  /* ================= Score HUD ================= */
-  var hud = document.getElementById("hud");
+  /* ================= Trail Score widget (draggable) ================= */
+  var widget = document.getElementById("widget");
   var hudScore = document.getElementById("hudScore");
   var hudMeters = document.getElementById("hudMeters");
 
@@ -1122,25 +1230,66 @@
     statDistance.textContent = meters.toFixed(1) + (lang === "ua" ? "м" : "m");
   }
 
-  /* ================= Idle overlay ================= */
-  var idleEl = document.getElementById("idle");
+  var drag = null;
+  function startDrag(x, y) {
+    var r = widget.getBoundingClientRect();
+    // switch from right/bottom anchoring to explicit left/top
+    widget.style.left = r.left + "px";
+    widget.style.top = r.top + "px";
+    widget.style.right = "auto";
+    widget.style.bottom = "auto";
+    widget.classList.add("dragging");
+    drag = { dx: x - r.left, dy: y - r.top, w: r.width, h: r.height };
+  }
+  function moveDrag(x, y) {
+    if (!drag) return;
+    var nx = Math.min(Math.max(x - drag.dx, 4), innerWidth - drag.w - 4);
+    var ny = Math.min(Math.max(y - drag.dy, 32), innerHeight - drag.h - 4);
+    widget.style.left = nx + "px";
+    widget.style.top = ny + "px";
+  }
+  function endDrag() {
+    drag = null;
+    widget.classList.remove("dragging");
+  }
+  widget.addEventListener("mousedown", function (e) {
+    e.preventDefault();
+    startDrag(e.clientX, e.clientY);
+  });
+  widget.addEventListener("touchstart", function (e) {
+    var t = e.touches[0];
+    if (t) startDrag(t.clientX, t.clientY);
+  }, { passive: true });
+  document.addEventListener("mouseup", endDrag);
+  document.addEventListener("touchend", endDrag);
+
+  /* ================= Idle mode (10s) ================= */
   var idleTimer = null;
-  var IDLE_MS = 5000;
+  var IDLE_MS = 10000;
+  var mjMenuIcon = document.getElementById("mjMenuIcon");
 
   function armIdle() {
     clearTimeout(idleTimer);
-    if (idleEl.classList.contains("show")) idleEl.classList.remove("show");
+    if (document.body.classList.contains("idle")) {
+      document.body.classList.remove("idle");
+      mjMenuIcon.classList.remove("pulse");
+    }
     idleTimer = setTimeout(function () {
-      idleEl.classList.add("show");
+      document.body.classList.add("idle");
+      mjMenuIcon.classList.add("pulse");
     }, IDLE_MS);
   }
-  armIdle(); // starts counting from page load
+  armIdle();
 
   /* ================= Pointer handling ================= */
   function onMove(x, y) {
     cursorEl.classList.add("on");
     cursorEl.style.transform = "translate(" + (x - 4) + "px, " + (y - 4) + "px)";
-    drawSegment(x, y);
+    if (drag) {
+      moveDrag(x, y);
+    } else {
+      drawSegment(x, y);
+    }
     armIdle();
   }
   document.addEventListener("mousemove", function (e) { onMove(e.clientX, e.clientY); });
@@ -1156,7 +1305,6 @@
 
   /* ================= Popover ================= */
   var popover = document.getElementById("popover");
-  var mjMenuIcon = document.getElementById("mjMenuIcon");
   var dockMj = document.getElementById("dockMj");
 
   function togglePopover(force) {
@@ -1166,9 +1314,6 @@
   }
   mjMenuIcon.addEventListener("click", function (e) { e.stopPropagation(); togglePopover(); });
   dockMj.addEventListener("click", function (e) { e.stopPropagation(); togglePopover(); });
-  document.addEventListener("click", function (e) {
-    if (!popover.contains(e.target)) togglePopover(false);
-  });
 
   /* ---- Toggle switch + status ---- */
   var mjActive = false;
@@ -1176,7 +1321,7 @@
   var statusDot = document.getElementById("statusDot");
   var statusText = document.getElementById("statusText");
   var jiggles = 0;
-  var jiggleInterval = 30; // seconds
+  var jiggleInterval = 30;
   var jiggleTimer = null;
 
   function setActive(on) {
@@ -1198,7 +1343,6 @@
   }
   mjSwitch.addEventListener("click", function () { setActive(!mjActive); });
 
-  /* ---- Segmented interval control ---- */
   var intervalCtl = document.getElementById("intervalCtl");
   intervalCtl.addEventListener("click", function (e) {
     var btn = e.target.closest("button");
@@ -1209,7 +1353,6 @@
     scheduleJiggle();
   });
 
-  /* ---- Activity stats ---- */
   var statSession = document.getElementById("statSession");
   var statJiggles = document.getElementById("statJiggles");
   var statDistance = document.getElementById("statDistance");
@@ -1221,46 +1364,71 @@
     statSession.textContent = m + ":" + String(s % 60).padStart(2, "0");
   }, 1000);
 
-  /* ================= Notes modal ================= */
-  var notesWindow = document.getElementById("notesWindow");
-  var modalBackdrop = document.getElementById("modalBackdrop");
+  /* ================= Folder stack ================= */
+  var stack = document.getElementById("stack");
+  var dockFolder = document.getElementById("dockFolder");
 
-  function toggleNotes(open) {
-    notesWindow.classList.toggle("open", open);
-    modalBackdrop.classList.toggle("open", open);
-    document.getElementById("dockNotes").classList.toggle("running", open);
+  function toggleStack(force) {
+    var open = force !== undefined ? force : !stack.classList.contains("open");
+    stack.classList.toggle("open", open);
+    dockFolder.classList.toggle("running", open);
   }
-  document.getElementById("dockNotes").addEventListener("click", function () { toggleNotes(true); });
-  document.getElementById("notesClose").addEventListener("click", function () { toggleNotes(false); });
-  modalBackdrop.addEventListener("click", function () { toggleNotes(false); });
+  dockFolder.addEventListener("click", function (e) { e.stopPropagation(); toggleStack(); });
 
-  /* ================= Dock behavior ================= */
+  /* ================= Doc modal ================= */
+  var docWindow = document.getElementById("docWindow");
+  var modalBackdrop = document.getElementById("modalBackdrop");
+  var docTitle = document.getElementById("docTitle");
+  var docContent = document.getElementById("docContent");
+  var dockNotes = document.getElementById("dockNotes");
+
+  function renderDoc(key) {
+    var doc = DOCS[lang][key];
+    docTitle.textContent = doc.title;
+    docContent.innerHTML = doc.html;
+  }
+  function openDoc(key) {
+    currentDoc = key;
+    renderDoc(key);
+    docWindow.classList.add("open");
+    modalBackdrop.classList.add("open");
+    dockNotes.classList.toggle("running", key === "readme");
+  }
+  function closeDoc() {
+    currentDoc = null;
+    docWindow.classList.remove("open");
+    modalBackdrop.classList.remove("open");
+    dockNotes.classList.remove("running");
+  }
+  dockNotes.addEventListener("click", function (e) { e.stopPropagation(); openDoc("readme"); });
+  document.getElementById("docClose").addEventListener("click", closeDoc);
+  modalBackdrop.addEventListener("click", closeDoc);
+
+  stack.addEventListener("click", function (e) {
+    var card = e.target.closest(".card");
+    if (!card) return;
+    e.stopPropagation();
+    toggleStack(false);
+    openDoc(card.getAttribute("data-doc"));
+  });
+
+  /* ================= Dock: GitHub ================= */
   document.getElementById("dockGithub").addEventListener("click", function () {
     window.open("https://github.com/dmirtyisme/mick-jigger", "_blank", "noopener");
   });
 
-  // Proximity magnification, macOS style
-  var dock = document.getElementById("dock");
-  var dockItems = Array.prototype.slice.call(dock.querySelectorAll(".dock-item"));
-
-  dock.addEventListener("mousemove", function (e) {
-    dockItems.forEach(function (item) {
-      var r = item.getBoundingClientRect();
-      var center = r.left + r.width / 2;
-      var d = Math.abs(e.clientX - center);
-      var scale = 1 + Math.max(0, 0.55 * Math.exp(-(d * d) / (2 * 70 * 70)));
-      item.style.transform = "scale(" + scale.toFixed(3) + ") translateY(" + (-(scale - 1) * 8).toFixed(1) + "px)";
-    });
+  /* ================= Outside clicks & keyboard ================= */
+  document.addEventListener("click", function (e) {
+    if (!popover.contains(e.target)) togglePopover(false);
+    if (!langMenu.contains(e.target) && e.target !== langBtn) toggleLangMenu(false);
+    if (!stack.contains(e.target)) toggleStack(false);
   });
-  dock.addEventListener("mouseleave", function () {
-    dockItems.forEach(function (item) { item.style.transform = ""; });
-  });
-
-  /* ================= Keyboard ================= */
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
       togglePopover(false);
-      toggleNotes(false);
+      toggleLangMenu(false);
+      toggleStack(false);
+      closeDoc();
     }
     armIdle();
   });
