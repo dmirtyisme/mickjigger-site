@@ -4,40 +4,100 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Mick Jigger — macOS mouse jiggler</title>
-<meta name="description" content="Mick Jigger keeps your Mac awake. A tiny menu bar app.">
+<meta name="description" content="Mick Jigger keeps your Mac awake. A tiny menu bar app. Move your cursor to draw a trail.">
+<!--
+  Mick Jigger landing — placeholder macOS UI, built per MASTER_BUILD_SPEC.md §0.
+  Single file, zero dependencies, zero frameworks.
+
+  NUMERIC SOURCING (per §0 directive — verified against the live, JS-rendered
+  Apple HIG at developer.apple.com/design/human-interface-guidelines, not a raw fetch):
+
+  * Typography — VERIFIED from the live HIG "Typography" page (macOS built-in text
+    styles table; page change-log dated 2025-12-16). Real macOS scale, which DIFFERS
+    from the spec's §2.3 table (that table is the iOS Dynamic Type scale). Real macOS:
+    Large Title 26/32 Bold, Title 1 22/26 Bold, Title 2 17/22 Bold, Title 3 15/20 Semibold,
+    Headline 13/16 Bold, Body 13/16 Regular, Callout 12/15, Subheadline 11/14,
+    Footnote 10/13, Caption 1 10/13, Caption 2 10/13. macOS default 13pt / minimum 10pt.
+  * Menu bar height 24px, traffic-light diameter ~12px + hex colors, Dock icon range
+    16–128px / default 48px — Apple does NOT publish these on its HIG prose pages
+    (the pages are JS-rendered and expose no such plain numbers). They come from real
+    macOS: System Settings > Dock slider + `defaults read com.apple.dock tilesize`, and
+    direct measurement of the window controls. Treated as authoritative-but-not-HIG-prose.
+  * Dock padding/gap, corner radii, blur radii, spacing grid, animation timings — Apple
+    publishes NO numeric spec for any of these. Values below are deliberate design
+    choices, NOT Apple-documented numbers, and are labelled as such where they appear.
+  * Dock icon size is 128px on purpose: the documented MAXIMUM of macOS's own 16–128px
+    Dock range (real default is 48px). Max-of-real-range, not an invented value.
+-->
 <style>
+  /* ============================================================
+     DESIGN TOKENS (§2.6) — three tiers: primitives → semantic → component
+     ============================================================ */
   :root {
-    --bg: #07080A;
-    --blue: #2B5BFF;
-    --blue-soft: rgba(43, 91, 255, 0.14);
-    --text: #F2F2F2;
-    --gray: rgba(255, 255, 255, 0.45);
-    --gray-dim: rgba(255, 255, 255, 0.28);
-    --glass: rgba(20, 20, 22, 0.85);
-    --glass-strong: rgba(28, 28, 30, 0.96);
-    --border: rgba(255, 255, 255, 0.08);
-    --menubar-bg: rgba(15, 15, 17, 0.72);
-    --dock-bg: rgba(255, 255, 255, 0.12);
-    --dock-border: rgba(255, 255, 255, 0.2);
-    --hover: rgba(255, 255, 255, 0.09);
-    --row-bg: rgba(255, 255, 255, 0.04);
-    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    /* --- Primitives: raw, theme-agnostic --- */
+    --gray-950: #07080A;   --gray-100: #E8E8ED;
+    --blue-500: #0A84FF;   /* dark-mode accent — measured systemBlue (dark), not a fixed Apple constant (§2.2) */
+    --blue-600: #007AFF;   /* light-mode accent — measured systemBlue (light) */
+
+    /* Font sizes — real macOS text-style point sizes, VERIFIED live HIG (see header) */
+    --fs-large-title: 26px; --fs-title1: 22px; --fs-title2: 17px; --fs-title3: 15px;
+    --fs-headline: 13px; --fs-body: 13px; --fs-callout: 12px;
+    --fs-subhead: 11px; --fs-footnote: 10px; --fs-caption1: 10px; --fs-caption2: 10px;
+    /* Line heights, real macOS values */
+    --lh-title2: 22px; --lh-title3: 20px; --lh-body: 16px;
+
+    /* Spacing — 4/8 base grid. NOT an Apple spec (§2.5); standard engineering convention. */
+    --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-6: 24px; --space-8: 32px;
+    /* Radii — NOT Apple-documented numbers (§2.1 has no published macOS radius); chosen family. */
+    --radius-sm: 6px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 20px;
+
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-serif: Georgia, "Times New Roman", serif;
+
+    /* Structural component tokens (§2.4) */
+    --menubar-height: 24px;   /* real macOS Big Sur+ menu-bar height (§2.4); not on HIG prose */
+    --dock-icon-size: 128px;  /* documented MAX of macOS 16–128px Dock range; real default 48px */
+    --dock-gap: 12px;         /* design choice — no published Apple dock-gap number */
+    --dock-radius: 18px;      /* design choice — no published Apple dock-radius number */
+    --popover-width: 320px;   /* §5.2 */
+    --popover-radius: var(--radius-xl); /* concentric family w/ dock 18 / activity 12 (§5.2 gap note) */
+    --activity-radius: 12px;
+  }
+
+  /* --- Semantic tokens, swapped per theme (§2.2 label alpha ladder is real & documented) --- */
+  [data-theme="dark"] {
+    --color-accent: var(--blue-500);
+    --color-text-primary: #F2F2F2;                    /* ≈ labelColor 84.7% */
+    --color-text-secondary: rgba(255,255,255,0.498);  /* secondaryLabelColor 49.8% — read floor */
+    --color-text-tertiary: rgba(255,255,255,0.259);   /* tertiaryLabelColor 25.9% */
+    --color-text-quaternary: rgba(255,255,255,0.098); /* quaternaryLabelColor 9.8% */
+    --color-surface: rgba(20,20,22,0.85);
+    --color-surface-2: rgba(255,255,255,0.06);
+    --color-border-hairline: rgba(255,255,255,0.08);
+    --color-bg: var(--gray-950);
+    --color-menubar: rgba(20,20,22,0.85);
+    --color-dock: rgba(255,255,255,0.08);
+    --color-dock-border: rgba(255,255,255,0.15);
+    --trail-rgb: 74,126,255;      /* §5.4 dark trail */
+    --bg-fade: 7,8,10;            /* §5.4 fade colour, matches dark bg */
+    --shadow-window: 0 40px 100px rgba(0,0,0,0.6);
   }
   [data-theme="light"] {
-    --bg: #E8E8ED;
-    --blue: #0040FF;
-    --blue-soft: rgba(0, 64, 255, 0.1);
-    --text: #1D1D1F;
-    --gray: rgba(0, 0, 0, 0.5);
-    --gray-dim: rgba(0, 0, 0, 0.32);
-    --glass: rgba(255, 255, 255, 0.7);
-    --glass-strong: rgba(245, 245, 247, 0.97);
-    --border: rgba(0, 0, 0, 0.1);
-    --menubar-bg: rgba(236, 236, 240, 0.85);
-    --dock-bg: rgba(255, 255, 255, 0.45);
-    --dock-border: rgba(0, 0, 0, 0.12);
-    --hover: rgba(0, 0, 0, 0.07);
-    --row-bg: rgba(0, 0, 0, 0.04);
+    --color-accent: var(--blue-600);
+    --color-text-primary: #1D1D1F;
+    --color-text-secondary: rgba(0,0,0,0.498);
+    --color-text-tertiary: rgba(0,0,0,0.259);
+    --color-text-quaternary: rgba(0,0,0,0.098);
+    --color-surface: rgba(255,255,255,0.7);
+    --color-surface-2: rgba(0,0,0,0.04);
+    --color-border-hairline: rgba(0,0,0,0.1);
+    --color-bg: var(--gray-100);
+    --color-menubar: rgba(236,236,240,0.9);
+    --color-dock: rgba(255,255,255,0.45);
+    --color-dock-border: rgba(0,0,0,0.12);
+    --trail-rgb: 0,64,220;        /* §5.8 light trail */
+    --bg-fade: 232,232,237;       /* matches light bg */
+    --shadow-window: 0 40px 100px rgba(0,0,0,0.3);
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -45,754 +105,437 @@
   html, body {
     height: 100%;
     overflow: hidden;
-    background: var(--bg);
+    background: var(--color-bg);
     font-family: var(--font);
-    color: var(--text);
+    font-size: var(--fs-body);
+    color: var(--color-text-primary);
     -webkit-font-smoothing: antialiased;
-    cursor: none;
+    /* §2.7 / §0: native system pointer stays visible at all times — no cursor:none anywhere. */
     transition: background 0.4s ease, color 0.4s ease;
   }
 
-  a, button { cursor: none; }
-
-  /* ---------- Ambient background ---------- */
-  .ambient {
-    position: fixed;
-    inset: 0;
-    z-index: 0;
-    background:
-      radial-gradient(1200px 700px at 50% 120%, rgba(43, 91, 255, 0.10), transparent 60%),
-      radial-gradient(900px 500px at 80% -10%, rgba(43, 91, 255, 0.05), transparent 55%);
-    pointer-events: none;
-    transition: opacity 0.4s ease;
+  /* Accessibility (§2.7): visible keyboard-focus indicator on every interactive element. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
-  [data-theme="light"] .ambient {
-    background:
-      radial-gradient(1200px 700px at 50% 120%, rgba(0, 64, 255, 0.07), transparent 60%),
-      radial-gradient(900px 500px at 80% -10%, rgba(0, 64, 255, 0.04), transparent 55%);
-  }
+  :focus:not(:focus-visible) { outline: none; }
 
-  /* ---------- Trail canvas ---------- */
+  /* ---------- Trail canvas (§5.4) — is the desktop ---------- */
   #trail {
-    position: fixed;
-    inset: 0;
-    z-index: 1;
-    display: block;
+    position: fixed; inset: 0; z-index: 0; display: block;
   }
 
-  /* ---------- Custom cursor ---------- */
-  #cursor {
-    position: fixed;
-    left: 0; top: 0;
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--blue);
-    box-shadow: 0 0 12px rgba(43, 91, 255, 0.9), 0 0 32px rgba(43, 91, 255, 0.35);
-    z-index: 2000;
-    pointer-events: none;
-    transform: translate(-100px, -100px);
-    transition: width .15s ease, height .15s ease, margin .15s ease, opacity .3s ease;
-    opacity: 0;
-  }
-  #cursor.on { opacity: 1; }
-  #cursor.hover {
-    width: 20px; height: 20px;
-    margin: -6px 0 0 -6px;
-    background: rgba(43, 91, 255, 0.35);
-    box-shadow: 0 0 16px rgba(43, 91, 255, 0.6);
-  }
-
-  /* ---------- MJ app tile (shared) ---------- */
+  /* ---------- Shared MJ tile ---------- */
   .mj-tile {
     background: linear-gradient(160deg, #4C77FF 0%, #2B5BFF 50%, #1B3FC4 100%);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.3);
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
+    display: flex; align-items: center; justify-content: center;
   }
-  .mj-tile span {
-    font-family: Georgia, "Times New Roman", serif;
-    font-style: italic;
-    font-weight: 700;
-    color: #fff;
-    letter-spacing: -1px;
-  }
+  .mj-tile span { font-family: var(--font-serif); font-style: italic; font-weight: 700; color: #fff; letter-spacing: -1px; }
 
-  /* ---------- Menu bar ---------- */
+  /* ============================================================
+     BOOT (§4)
+     ============================================================ */
+  #boot {
+    position: fixed; inset: 0; z-index: 3000;
+    background: #000; display: flex; align-items: flex-end; justify-content: center;
+    padding-bottom: 24px; transition: opacity 0.35s ease;
+  }
+  #boot.done { opacity: 0; pointer-events: none; }
+  #bootIcon {
+    width: 96px; height: 96px; border-radius: 22px;
+    /* macOS launch bounce, 3×, 1.2s (§4). Timing = design choice, not Apple-published. */
+    animation: bootBounce 0.4s cubic-bezier(0.28,0.84,0.42,1) 3;
+  }
+  #bootIcon span { font-size: 42px; }
+  @keyframes bootBounce { 0%,100% { transform: translateY(0);} 50% { transform: translateY(-40px);} }
+
+  /* ============================================================
+     MENU BAR (§5.1) — 24px
+     ============================================================ */
   .menubar {
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    height: 28px;
-    z-index: 50;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 12px;
-    background: var(--menubar-bg);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
-    user-select: none;
-    transform: translateY(-28px);
-    opacity: 0;
-    transition: transform .45s cubic-bezier(0.22, 1, 0.36, 1), opacity .45s ease,
-                background 0.4s ease, border-color 0.4s ease;
+    position: fixed; top: 0; left: 0; right: 0; height: var(--menubar-height); z-index: 500;
+    display: flex; align-items: center; justify-content: space-between; padding: 0 10px;
+    background: var(--color-menubar);
+    backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 0.5px solid var(--color-border-hairline);
+    font-size: var(--fs-body); user-select: none;
+    transform: translateY(calc(-1 * var(--menubar-height))); opacity: 0;
+    transition: transform 0.4s ease, opacity 0.4s ease, background 0.4s ease, border-color 0.4s ease;
   }
   .menubar.in { transform: translateY(0); opacity: 1; }
-  .menubar .left, .menubar .right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
+  .menubar .left, .menubar .right { display: flex; align-items: center; gap: 4px; height: 100%; }
   .mb-item {
-    display: flex;
-    align-items: center;
-    padding: 3px 9px;
-    border-radius: 5px;
-    color: var(--text);
-    border: 0;
-    background: transparent;
-    font-family: var(--font);
-    font-size: 13px;
-    transition: background .12s ease, color 0.4s ease;
-    white-space: nowrap;
+    display: flex; align-items: center; height: 100%; padding: 0 8px;
+    color: var(--color-text-primary); border: 0; background: transparent;
+    font-family: var(--font); font-size: var(--fs-body); white-space: nowrap;
+    transition: background 0.12s ease, color 0.4s ease;
   }
-  button.mb-item:hover { background: var(--hover); }
-  .mb-item.app-name { font-weight: 700; }
+  button.mb-item { border-radius: 5px; }
+  button.mb-item:hover { background: rgba(127,127,127,0.18); }
+  .mb-item.brand { font-weight: 700; }
+  #clock { font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
 
-  /* MJ menu bar icon — miniature app tile */
-  #mjMenuIcon { padding: 3px 6px; }
-  #mjMenuIcon .mj-tile {
-    width: 20px; height: 20px;
-    border-radius: 5px;
-  }
-  #mjMenuIcon .mj-tile span { font-size: 10px; letter-spacing: -0.5px; }
-  #mjMenuIcon.open { background: var(--hover); }
-  #mjMenuIcon.pulse .mj-tile {
-    animation: mjPulse 1.6s ease-in-out infinite;
-  }
+  /* Menu-bar MJ icon: 20×20 tile (§5.1) */
+  #mjMenuIcon { padding: 0 6px; }
+  #mjMenuIcon .mj-tile { width: 20px; height: 20px; border-radius: 5px; }
+  #mjMenuIcon .mj-tile span { font-size: 11px; letter-spacing: -0.5px; }
+  #mjMenuIcon.active-dot .mj-tile { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 0 2px rgba(10,132,255,0.4); }
+  body.idle #mjMenuIcon .mj-tile { animation: mjPulse 1.6s ease-in-out infinite; }
   @keyframes mjPulse {
-    0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 0 0 rgba(43, 91, 255, 0.6); }
-    50%      { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 14px 4px rgba(43, 91, 255, 0.75); }
+    0%,100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 0 0 rgba(10,132,255,0.6); }
+    50%     { box-shadow: inset 0 1px 0 rgba(255,255,255,0.3), 0 0 16px 4px rgba(10,132,255,0.8); }
   }
 
-  #themeToggle { font-size: 13px; }
-  #clock { font-variant-numeric: tabular-nums; }
-
-  /* ---------- Language switcher (macOS input source style) ---------- */
-  .lang-wrap { position: relative; }
-  #langBtn { gap: 5px; font-weight: 600; font-size: 12px; }
-  #langBtn .flag { font-size: 13px; }
-  #langBtn.open { background: var(--hover); }
+  /* Language switcher (§5.9) */
+  .lang-wrap { position: relative; height: 100%; }
+  #langBtn { gap: 5px; font-size: var(--fs-subhead); font-weight: 600; }
+  #langBtn .flag { font-size: var(--fs-body); }
   .lang-menu {
-    position: absolute;
-    top: calc(100% + 7px);
-    right: 0;
-    min-width: 170px;
-    background: var(--glass);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
-    padding: 5px;
-    opacity: 0;
-    transform: translateY(-6px) scale(0.98);
-    transform-origin: top right;
-    pointer-events: none;
-    transition: opacity .18s ease, transform .18s cubic-bezier(0.22, 1, 0.36, 1),
-                background 0.4s ease, border-color 0.4s ease;
+    position: absolute; top: calc(100% + 4px); right: 0; min-width: 172px;
+    background: var(--color-surface); backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 0.5px solid var(--color-border-hairline); border-radius: var(--radius-md);
+    box-shadow: var(--shadow-window); padding: 5px; opacity: 0;
+    transform: translateY(-6px) scale(0.98); transform-origin: top right; pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.22,1,0.36,1);
   }
   .lang-menu.open { opacity: 1; transform: none; pointer-events: auto; }
   .lang-menu button {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    width: 100%;
-    border: 0;
-    background: transparent;
-    font-family: var(--font);
-    font-size: 13px;
-    color: var(--text);
-    padding: 7px 10px;
-    border-radius: 7px;
-    text-align: left;
-    transition: background .12s ease;
+    display: flex; align-items: center; gap: 9px; width: 100%; border: 0; background: transparent;
+    font-family: var(--font); font-size: var(--fs-body); color: var(--color-text-primary);
+    padding: 6px 9px; border-radius: var(--radius-sm); text-align: left;
   }
-  .lang-menu button:hover { background: var(--blue); color: #fff; }
-  .lang-menu button .check { margin-left: auto; opacity: 0; font-size: 11px; }
-  .lang-menu button.active .check { opacity: 1; }
+  .lang-menu button:hover { background: var(--color-accent); color: #fff; }
+  .lang-menu button .check { margin-left: auto; opacity: 0; }
+  .lang-menu button.sel .check { opacity: 1; }
 
-  /* ---------- Dock ---------- */
+  /* ============================================================
+     DOCK (§5.5)
+     ============================================================ */
   .dock-wrap {
-    position: fixed;
-    bottom: 12px;
-    left: 0; right: 0;
-    z-index: 60;
-    display: flex;
-    justify-content: center;
-    pointer-events: none;
-    transform: translateY(90px);
-    opacity: 0;
-    transition: transform .45s cubic-bezier(0.22, 1, 0.36, 1), opacity .45s ease;
+    position: fixed; bottom: 12px; left: 0; right: 0; z-index: 600;
+    display: flex; justify-content: center; pointer-events: none;
+    transform: translateY(140px); opacity: 0;
+    transition: transform 0.4s ease, opacity 0.4s ease;
   }
   .dock-wrap.in { transform: translateY(0); opacity: 1; }
   .dock {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 14px 18px;
-    background: var(--dock-bg);
-    backdrop-filter: blur(40px) saturate(180%);
-    -webkit-backdrop-filter: blur(40px) saturate(180%);
-    border: 0.5px solid var(--dock-border);
-    border-radius: 24px;
-    pointer-events: auto;
-    transition: background 0.4s ease, border-color 0.4s ease;
+    display: flex; align-items: center; gap: var(--dock-gap);
+    padding: 14px 18px;  /* design choice — no published Apple dock-padding number (§5.5) */
+    background: var(--color-dock);
+    backdrop-filter: blur(40px) saturate(180%); -webkit-backdrop-filter: blur(40px) saturate(180%);
+    border: 0.5px solid var(--color-dock-border); border-radius: var(--dock-radius);
+    pointer-events: auto; transition: background 0.4s ease, border-color 0.4s ease;
+    max-width: calc(100vw - 24px); overflow: visible;
   }
   .dock-item {
-    width: 88px; height: 88px;
-    flex: 0 0 88px;
-    position: relative;
-    border: 0;
-    background: transparent;
-    padding: 0;
+    width: var(--dock-icon-size); height: var(--dock-icon-size); flex: 0 0 var(--dock-icon-size);
+    position: relative; border: 0; background: transparent; padding: 0;
+    /* §5.5: fixed size, NO magnification. */
   }
   .dock-item .tile {
-    width: 100%; height: 100%;
-    border-radius: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
+    width: 100%; height: 100%; border-radius: 28px;
+    display: flex; align-items: center; justify-content: center; overflow: hidden;
   }
-  .dock-item .tile.mj { border-radius: 20px; }
-  .dock-item .tile.mj span { font-size: 38px; }
-  .dock-item .tile.notes {
-    background: linear-gradient(180deg, #FDFBF3 0%, #F5EFD8 100%);
-    font-size: 44px;
-  }
+  .dock-item .tile.mj span { font-size: 56px; }
+  .dock-item .tile.notes { background: linear-gradient(180deg,#FDFBF3 0%,#F5EFD8 100%); font-size: 64px; }
   .dock-item .tile.github { background: #16181C; border: 1px solid rgba(255,255,255,0.1); }
-  .dock-item .tile.github svg { width: 50px; height: 50px; fill: #F2F2F2; }
-  .dock-item .tile.folder { background: transparent; }
-  .dock-item .tile.folder svg { width: 82px; height: 69px; }
-
+  .dock-item .tile.github svg { width: 74px; height: 74px; fill: #F2F2F2; }
+  .dock-item .tile.folder svg { width: 118px; height: 100px; }
   .dock-item::after {
-    content: "";
-    position: absolute;
-    bottom: -8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 4px; height: 4px;
-    border-radius: 50%;
-    background: var(--gray);
-    opacity: 0;
-    transition: opacity .2s ease;
+    content: ""; position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%);
+    width: 5px; height: 5px; border-radius: 50%; background: var(--color-text-secondary);
+    opacity: 0; transition: opacity 0.2s ease;
   }
   .dock-item.running::after { opacity: 1; }
+  /* Tooltip above icon only, on hover (§5.5) — no scaling */
+  .dock-item .tip {
+    position: absolute; bottom: calc(100% + 16px); left: 50%; transform: translateX(-50%) translateY(4px);
+    background: var(--color-surface); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 0.5px solid var(--color-border-hairline); color: var(--color-text-primary);
+    font-size: var(--fs-subhead); font-weight: 500; padding: 4px 10px; border-radius: var(--radius-sm);
+    white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.15s ease, transform 0.15s ease;
+  }
+  .dock-item:hover .tip, .dock-item:focus-visible .tip { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  .dock-item .label {
-    position: absolute;
-    bottom: calc(100% + 14px);
-    left: 50%;
-    transform: translateX(-50%) translateY(4px);
-    background: var(--glass);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    color: var(--text);
-    font-size: 12px;
-    font-weight: 500;
-    padding: 4px 10px;
-    border-radius: 7px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .15s ease, transform .15s ease;
-  }
-  .dock-item:hover .label { opacity: 1; transform: translateX(-50%) translateY(0); }
-
-  /* ---------- Boot animation ---------- */
-  #bootIcon {
-    position: fixed;
-    bottom: 22px;
-    left: 50%;
-    margin-left: -28px;
-    width: 56px; height: 56px;
-    border-radius: 14px;
-    z-index: 70;
-    animation: bootBounce .4s ease-in-out 3;
-    transition: opacity .35s ease;
-    pointer-events: none;
-  }
-  #bootIcon span { font-size: 24px; }
-  #bootIcon.gone { opacity: 0; }
-  @keyframes bootBounce {
-    0%, 100% { transform: translateY(0); }
-    50%      { transform: translateY(-38px); }
-  }
-
-  /* ---------- Popover ---------- */
-  .popover {
-    position: fixed;
-    top: 34px;
-    right: 10px;
-    z-index: 80;
-    width: 300px;
-    background: var(--glass);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
-    padding: 16px;
-    opacity: 0;
-    transform: translateY(-8px) scale(0.98);
-    transform-origin: top right;
-    pointer-events: none;
-    transition: opacity .2s ease, transform .2s cubic-bezier(0.22, 1, 0.36, 1),
-                background 0.4s ease, border-color 0.4s ease;
-  }
-  .popover.open {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-    pointer-events: auto;
-  }
-  .pop-head {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 14px;
-  }
-  .pop-head .title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
-  .badge {
-    font-size: 9px;
-    font-weight: 800;
-    letter-spacing: 0.12em;
-    color: var(--blue);
-    background: var(--blue-soft);
-    border: 1px solid rgba(43, 91, 255, 0.35);
-    border-radius: 5px;
-    padding: 2px 6px;
-  }
-  .pop-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 10px 12px;
-    background: var(--row-bg);
-    border: 1px solid var(--border);
-    border-radius: 11px;
-    margin-bottom: 10px;
-    transition: background 0.4s ease, border-color 0.4s ease;
-  }
-  .status {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 600;
-  }
-  .status-dot {
-    width: 8px; height: 8px;
-    border-radius: 50%;
-    background: var(--gray-dim);
-    transition: background .25s ease, box-shadow .25s ease;
-  }
-  .status-dot.on {
-    background: #30D158;
-    box-shadow: 0 0 10px rgba(48, 209, 88, 0.7);
-  }
-
+  /* ============================================================
+     SHARED CONTROLS: switch, segmented, rows
+     ============================================================ */
   .switch {
-    position: relative;
-    width: 42px; height: 25px;
-    border-radius: 999px;
-    background: var(--gray-dim);
-    border: 0;
-    padding: 0;
-    transition: background .25s ease;
+    position: relative; width: 38px; height: 22px; border-radius: 999px;
+    background: var(--color-text-tertiary); border: 0; padding: 0; flex: 0 0 auto;
+    transition: background 0.25s ease;
   }
   .switch::after {
-    content: "";
-    position: absolute;
-    top: 2px; left: 2px;
-    width: 21px; height: 21px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
-    transition: transform .25s cubic-bezier(0.22, 1, 0.36, 1);
+    content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.35);
+    transition: transform 0.25s cubic-bezier(0.22,1,0.36,1);
   }
   .switch.on { background: #30D158; }
-  .switch.on::after { transform: translateX(17px); }
+  .switch.on::after { transform: translateX(16px); }
 
-  .pop-section-label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--gray-dim);
-    margin: 12px 2px 7px;
-  }
   .segmented {
-    display: flex;
-    background: var(--row-bg);
-    border: 1px solid var(--border);
-    border-radius: 9px;
-    padding: 2px;
-    gap: 2px;
-    transition: background 0.4s ease, border-color 0.4s ease;
+    display: flex; background: var(--color-surface-2); border: 0.5px solid var(--color-border-hairline);
+    border-radius: 8px; padding: 2px; gap: 2px;
   }
   .segmented button {
-    flex: 1;
-    border: 0;
-    background: transparent;
-    color: var(--gray);
-    font-family: var(--font);
-    font-size: 12px;
-    font-weight: 600;
-    padding: 6px 0;
-    border-radius: 7px;
-    transition: background .15s ease, color .15s ease;
+    flex: 1; border: 0; background: transparent; color: var(--color-text-secondary);
+    font-family: var(--font); font-size: var(--fs-subhead); font-weight: 600; padding: 5px 8px;
+    border-radius: 6px; white-space: nowrap; transition: background 0.15s ease, color 0.15s ease;
   }
-  .segmented button.active {
-    background: var(--blue);
-    color: #fff;
-    box-shadow: 0 2px 10px rgba(43, 91, 255, 0.4);
-  }
+  .segmented button.sel { background: var(--color-accent); color: #fff; }
 
-  .stats-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    gap: 8px;
-    margin-top: 4px;
+  /* ============================================================
+     POPOVER (§5.2)
+     ============================================================ */
+  .popover {
+    position: fixed; top: calc(var(--menubar-height) + 6px); right: 8px; z-index: 800;
+    width: var(--popover-width); max-height: calc(100vh - var(--menubar-height) - 24px); overflow-y: auto;
+    background: var(--color-surface); backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border: 0.5px solid var(--color-border-hairline); border-radius: var(--popover-radius);
+    box-shadow: var(--shadow-window); padding: 14px;
+    opacity: 0; transform: translateY(-8px) scale(0.98); transform-origin: top right; pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s cubic-bezier(0.22,1,0.36,1), background 0.4s ease;
   }
-  .stat {
-    background: var(--row-bg);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 9px 6px;
-    text-align: center;
-    transition: background 0.4s ease, border-color 0.4s ease;
+  .popover.open { opacity: 1; transform: none; pointer-events: auto; }
+  .pop-head { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 12px; }
+  .pop-head .htext { flex: 1; }
+  .pop-head .htitle { font-size: var(--fs-headline); font-weight: 700; display: flex; align-items: center; gap: 7px; }
+  .pop-head .hstatus { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-subhead); color: var(--color-text-secondary); }
+  .pop-head .subline { font-size: var(--fs-caption1); color: var(--color-text-secondary); margin-top: 3px; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--color-text-tertiary); transition: background 0.25s, box-shadow 0.25s; }
+  .status-dot.on { background: #30D158; box-shadow: 0 0 8px rgba(48,209,88,0.7); }
+  .badge {
+    font-size: 9px; font-weight: 800; letter-spacing: 0.1em; color: var(--color-accent);
+    background: rgba(10,132,255,0.14); border: 0.5px solid rgba(10,132,255,0.35);
+    border-radius: 5px; padding: 2px 5px; align-self: flex-start;
   }
-  .stat .v {
-    font-size: 15px;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-    letter-spacing: -0.02em;
+  .pop-section { border-top: 0.5px solid var(--color-border-hairline); padding-top: 10px; margin-top: 10px; }
+  .pop-label { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-text-tertiary); margin-bottom: 7px; }
+  .pop-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 0; }
+  .pop-row .rlabel { font-size: var(--fs-subhead); color: var(--color-text-primary); }
+  .pop-subrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0 2px; }
+  .pop-subrow .slabel { font-size: var(--fs-caption1); color: var(--color-text-secondary); white-space: nowrap; }
+  .pop-subrow.hidden { display: none; }
+  .warn { font-size: var(--fs-caption1); color: #FF9F0A; line-height: 1.4; padding: 6px 0 2px; }
+  .warn.hidden { display: none; }
+  .accordion-head { display: flex; align-items: center; justify-content: space-between; cursor: default; }
+  .chev { transition: transform 0.2s ease; color: var(--color-text-secondary); font-size: 10px; }
+  .accordion.open .chev { transform: rotate(90deg); }
+  .accordion-body { display: none; padding-top: 6px; }
+  .accordion.open .accordion-body { display: block; }
+  .margin-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .margin-field { display: flex; align-items: center; justify-content: space-between; background: var(--color-surface-2); border-radius: 7px; padding: 5px 9px; }
+  .margin-field label { font-size: var(--fs-caption1); color: var(--color-text-secondary); }
+  .margin-field input {
+    width: 44px; text-align: right; border: 0; background: transparent; color: var(--color-text-primary);
+    font-family: var(--font); font-size: var(--fs-subhead); font-variant-numeric: tabular-nums;
   }
-  .stat .k {
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--gray-dim);
-    margin-top: 2px;
+  .pop-stats-line { font-size: var(--fs-subhead); color: var(--color-text-primary); font-variant-numeric: tabular-nums; }
+  .pop-stats-sub { font-size: var(--fs-caption1); color: var(--color-text-secondary); margin-top: 2px; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font-family: var(--font); font-size: var(--fs-subhead); font-weight: 600;
+    padding: 7px 14px; border-radius: 8px; border: 0.5px solid var(--color-border-hairline);
+    background: var(--color-surface-2); color: var(--color-text-primary); transition: background 0.15s ease;
   }
-  .pop-foot {
-    margin-top: 13px;
-    font-size: 11px;
-    line-height: 1.45;
-    color: var(--gray-dim);
-    text-align: center;
-  }
+  .btn:hover { background: rgba(127,127,127,0.18); }
+  .btn.accent { background: var(--color-accent); color: #fff; border-color: transparent; }
+  .btn.block { width: 100%; }
+  .btn.small { padding: 5px 10px; font-size: var(--fs-caption1); }
+  .pop-hotkey { text-align: center; font-size: var(--fs-caption1); color: var(--color-text-tertiary); margin-top: 10px; }
+  .pop-version { text-align: center; font-size: var(--fs-caption2); color: var(--color-text-quaternary); margin-top: 3px; }
 
-  /* ---------- Trail Score widget (draggable) ---------- */
+  /* ============================================================
+     TRAIL SCORE WIDGET (§5.6)
+     ============================================================ */
   .widget {
-    position: fixed;
-    right: 22px;
-    bottom: 110px;
-    z-index: 900;
-    width: 168px;
-    background: var(--glass);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 10px 16px 14px;
-    text-align: center;
-    opacity: 0;
-    transform: translateY(10px);
-    transition: opacity .5s ease, transform .5s cubic-bezier(0.22, 1, 0.36, 1),
-                background 0.4s ease, border-color 0.4s ease;
-    pointer-events: none;
-    user-select: none;
-    touch-action: none;
+    position: fixed; width: 160px; z-index: 700;
+    right: 22px; bottom: 160px;   /* default anchor (§5.6); converted to left/top on drag */
+    background: var(--color-surface); backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border: 0.5px solid var(--color-border-hairline); border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-window); padding: 8px 16px 14px; text-align: center;
+    opacity: 0; transform: translateY(10px); pointer-events: none; user-select: none; touch-action: none;
+    transition: opacity 0.5s ease, transform 0.5s cubic-bezier(0.22,1,0.36,1), background 0.4s ease;
   }
-  .widget.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
-  .widget.dragging { transition: background 0.4s ease, border-color 0.4s ease; }
-  .widget .grip {
-    width: 36px; height: 4px;
-    border-radius: 999px;
-    background: var(--gray-dim);
-    margin: 0 auto 9px;
-  }
-  .widget-label {
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-    color: var(--blue);
-  }
-  .widget-score {
-    font-size: 34px;
-    font-weight: 700;
-    letter-spacing: -0.03em;
-    line-height: 1.15;
-    font-variant-numeric: tabular-nums;
-  }
-  .widget-meters {
-    font-size: 12px;
-    color: var(--gray);
-    font-variant-numeric: tabular-nums;
-  }
+  .widget.shown { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .widget.dragging { transition: background 0.4s ease; }
+  .widget .grip { width: 32px; height: 4px; border-radius: 999px; background: var(--color-text-tertiary); margin: 0 auto 8px; }
+  .widget .wlabel { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--color-text-tertiary); }
+  .widget .wscore { font-size: 32px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+  .widget .wmeters { font-size: var(--fs-subhead); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
 
-  /* ---------- Idle mode ---------- */
-  .idle-hint {
-    position: fixed;
-    top: 44px;
-    left: 50%;
-    transform: translate(-50%, -8px);
-    z-index: 120;
-    background: var(--glass);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 999px;
-    padding: 9px 20px;
-    font-size: 13px;
-    font-weight: 500;
-    color: var(--gray);
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .6s ease, transform .6s cubic-bezier(0.22, 1, 0.36, 1),
-                background 0.4s ease, border-color 0.4s ease;
+  /* ============================================================
+     WINDOWS (Notes, Folder docs, Activity) — shared chrome
+     ============================================================ */
+  .backdrop { position: fixed; inset: 0; z-index: 900; background: rgba(0,0,0,0.32); opacity: 0; pointer-events: none; transition: opacity 0.25s ease; }
+  .backdrop.open { opacity: 1; pointer-events: auto; }
+  .window {
+    position: fixed; z-index: 1000; background: var(--color-surface);
+    backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border: 0.5px solid var(--color-border-hairline); border-radius: var(--activity-radius);
+    box-shadow: var(--shadow-window); overflow: hidden;
+    opacity: 0; transform: translate(-50%,-46%) scale(0.97); transform-origin: center; pointer-events: none;
+    transition: opacity 0.25s ease, transform 0.25s cubic-bezier(0.22,1,0.36,1), background 0.4s ease;
+    left: 50%; top: 50%;
   }
-  .idle-hint .mj-word { color: var(--blue); font-weight: 700; }
-  body.idle .idle-hint { opacity: 1; transform: translate(-50%, 0); }
-
-  #synthCursor {
-    position: fixed;
-    top: 0; left: 0;
-    width: 10px; height: 10px;
-    border-radius: 50%;
-    background: var(--blue);
-    box-shadow: 0 0 14px rgba(43, 91, 255, 0.95), 0 0 40px rgba(43, 91, 255, 0.4);
-    z-index: 110;
-    pointer-events: none;
-    opacity: 0;
-    transition: opacity .8s ease;
-  }
-  body.idle #synthCursor { opacity: 1; animation: drift 16s ease-in-out infinite; }
-  @keyframes drift {
-    0%   { transform: translate(12vw, 68vh); }
-    20%  { transform: translate(34vw, 30vh); }
-    40%  { transform: translate(66vw, 52vh); }
-    60%  { transform: translate(84vw, 24vh); }
-    80%  { transform: translate(48vw, 74vh); }
-    100% { transform: translate(12vw, 68vh); }
-  }
-
-  /* ---------- Folder stack ---------- */
-  .stack {
-    position: fixed;
-    bottom: 92px;
-    left: 50%;
-    z-index: 90;
-    pointer-events: none;
-  }
-  .stack .card {
-    position: absolute;
-    bottom: 0;
-    left: -80px;
-    width: 160px;
-    background: var(--glass);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 13px;
-    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.35);
-    padding: 12px 14px;
-    text-align: left;
-    font-family: var(--font);
-    opacity: 0;
-    transform: translateY(24px) scale(0.9);
-    transition: opacity .28s ease, transform .32s cubic-bezier(0.22, 1, 0.36, 1),
-                background 0.4s ease, border-color 0.4s ease;
-    pointer-events: none;
-  }
-  .stack.open .card { opacity: 1; pointer-events: auto; }
-  .stack.open .card:nth-child(1) { transform: translate(-116px, -12px) rotate(-5deg); transition-delay: 0s; }
-  .stack.open .card:nth-child(2) { transform: translate(0, -34px) rotate(0deg); transition-delay: .05s; z-index: 2; }
-  .stack.open .card:nth-child(3) { transform: translate(116px, -12px) rotate(5deg); transition-delay: .1s; }
-  .stack .card:hover { border-color: var(--blue); }
-  .stack .card .card-emoji { font-size: 20px; margin-bottom: 6px; }
-  .stack .card .card-title { font-size: 13px; font-weight: 700; color: var(--text); }
-  .stack .card .card-sub { font-size: 11px; color: var(--gray); margin-top: 2px; line-height: 1.35; }
-
-  /* ---------- Doc modal (Notes-style window) ---------- */
-  .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 150;
-    background: rgba(0, 0, 0, 0.4);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .25s ease;
-  }
-  .modal-backdrop.open { opacity: 1; pointer-events: auto; }
-  .doc-window {
-    position: fixed;
-    top: 50%; left: 50%;
-    z-index: 160;
-    width: min(460px, calc(100vw - 40px));
-    background: var(--glass-strong);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.55);
-    opacity: 0;
-    transform: translate(-50%, -46%) scale(0.96);
-    pointer-events: none;
-    transition: opacity .25s ease, transform .25s cubic-bezier(0.22, 1, 0.36, 1),
-                background 0.4s ease, border-color 0.4s ease;
-    overflow: hidden;
-  }
-  .doc-window.open {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-    pointer-events: auto;
-  }
-  .doc-titlebar {
-    display: flex;
-    align-items: center;
-    height: 40px;
-    padding: 0 14px;
-    background: var(--row-bg);
-    border-bottom: 1px solid var(--border);
-    position: relative;
-    transition: background 0.4s ease, border-color 0.4s ease;
+  .window.open { opacity: 1; transform: translate(-50%,-50%) scale(1); pointer-events: auto; }
+  .titlebar {
+    display: flex; align-items: center; height: 38px; padding: 0 12px; position: relative;
+    background: var(--color-surface-2); border-bottom: 0.5px solid var(--color-border-hairline); cursor: default;
   }
   .traffic { display: flex; gap: 8px; }
-  .traffic button {
-    width: 12px; height: 12px;
-    border-radius: 50%;
-    border: 0;
-    padding: 0;
-    transition: filter .15s ease;
-  }
-  .traffic button:hover { filter: brightness(1.25); }
-  .traffic .red { background: #FF5F57; }
-  .traffic .yellow { background: #FEBC2E; }
-  .traffic .green { background: #28C840; }
-  .doc-title {
-    position: absolute;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--gray);
-    white-space: nowrap;
-    max-width: 70%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .doc-body { padding: 22px 26px 24px; }
-  .doc-body ol {
-    list-style: none;
-    counter-reset: step;
-    display: flex;
-    flex-direction: column;
-    gap: 13px;
-  }
-  .doc-body ol li {
-    counter-increment: step;
-    position: relative;
-    padding-left: 35px;
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--text);
-  }
-  .doc-body ol li::before {
-    content: counter(step);
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 22px;
-    height: 22px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--blue);
-    background: var(--blue-soft);
-    border: 1px solid rgba(43, 91, 255, 0.35);
-    border-radius: 50%;
-  }
-  .doc-body ul {
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 11px;
-  }
-  .doc-body ul li {
-    position: relative;
-    padding-left: 22px;
-    font-size: 14px;
-    line-height: 1.5;
-    color: var(--text);
-  }
-  .doc-body ul li::before {
-    content: "";
-    position: absolute;
-    left: 4px;
-    top: 8px;
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: var(--blue);
-  }
-  .doc-body strong { color: var(--text); font-weight: 600; }
-  .doc-version {
-    margin-top: 20px;
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-    font-size: 11px;
-    color: var(--gray-dim);
-    display: flex;
-    justify-content: space-between;
-  }
+  .traffic button { width: 12px; height: 12px; border-radius: 50%; border: 0; padding: 0; transition: filter 0.15s ease; }
+  .traffic button:hover { filter: brightness(1.2); }
+  .traffic .red { background: #FF5F57; }    /* real macOS close (§2.4) */
+  .traffic .yellow { background: #FEBC2E; }  /* minimize */
+  .traffic .green { background: #28C840; }   /* zoom */
+  .titlebar .wtitle { position: absolute; left: 50%; transform: translateX(-50%); font-size: var(--fs-body); font-weight: 600; color: var(--color-text-secondary); }
 
-  /* ---------- Responsive ---------- */
-  @media (max-width: 640px) {
-    .widget { right: 14px; bottom: 96px; width: 144px; }
-    .widget-score { font-size: 26px; }
-    .dock-item { width: 64px; height: 64px; flex-basis: 64px; }
-    .idle-hint { white-space: normal; text-align: center; max-width: calc(100vw - 48px); }
+  /* Notes window */
+  .notes-win { width: min(440px, calc(100vw - 32px)); }
+  .notes-body { padding: 20px 24px 22px; }
+  .notes-body h2 { font-size: var(--fs-title3); font-weight: 600; letter-spacing: -0.6px; margin-bottom: 14px; }
+  .notes-body ol { list-style: none; counter-reset: s; display: flex; flex-direction: column; gap: 12px; }
+  .notes-body ol li { counter-increment: s; position: relative; padding-left: 32px; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--color-text-primary); }
+  .notes-body ol li::before {
+    content: counter(s); position: absolute; left: 0; top: 0; width: 20px; height: 20px;
+    display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-caption1); font-weight: 700;
+    color: var(--color-accent); background: rgba(10,132,255,0.14); border: 0.5px solid rgba(10,132,255,0.35); border-radius: 50%;
   }
+  .notes-body strong { font-weight: 600; }
+  .notes-ver { margin-top: 18px; padding-top: 12px; border-top: 0.5px solid var(--color-border-hairline); font-size: var(--fs-caption1); color: var(--color-text-tertiary); }
 
-  @media (prefers-reduced-motion: reduce) {
-    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  /* Folder fan-stack (§5.5 icon 2) */
+  .stack { position: fixed; bottom: 158px; left: 50%; z-index: 750; pointer-events: none; }
+  .stack .card {
+    position: absolute; bottom: 0; left: -80px; width: 160px; text-align: left;
+    background: var(--color-surface); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+    border: 0.5px solid var(--color-border-hairline); border-radius: var(--radius-lg); box-shadow: var(--shadow-window);
+    padding: 12px 14px; font-family: var(--font);
+    opacity: 0; transform: translateY(24px) scale(0.9); pointer-events: none;
+    transition: opacity 0.28s ease, transform 0.32s cubic-bezier(0.22,1,0.36,1), border-color 0.15s ease;
+  }
+  .stack.open .card { opacity: 1; pointer-events: auto; }
+  .stack.open .card:nth-child(1) { transform: translate(-118px,-10px) rotate(-6deg); }
+  .stack.open .card:nth-child(2) { transform: translate(0,-30px); z-index: 2; }
+  .stack.open .card:nth-child(3) { transform: translate(118px,-10px) rotate(6deg); }
+  .stack .card:hover { border-color: var(--color-accent); }
+  .stack .card .c-emoji { font-size: 20px; margin-bottom: 6px; }
+  .stack .card .c-title { font-size: var(--fs-body); font-weight: 700; color: var(--color-text-primary); }
+  .stack .card .c-sub { font-size: var(--fs-caption1); color: var(--color-text-secondary); margin-top: 2px; line-height: 1.35; }
+
+  /* Doc modal (folder card content) */
+  .doc-win { width: min(460px, calc(100vw - 32px)); }
+  .doc-body { padding: 20px 24px 22px; }
+  .doc-body h2 { font-size: var(--fs-title3); font-weight: 600; letter-spacing: -0.6px; margin-bottom: 12px; }
+  .doc-body ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+  .doc-body ul li { position: relative; padding-left: 20px; font-size: var(--fs-body); line-height: var(--lh-body); color: var(--color-text-primary); }
+  .doc-body ul li::before { content: ""; position: absolute; left: 3px; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent); }
+  .doc-body strong { font-weight: 600; }
+
+  /* ============================================================
+     ACTIVITY WINDOW (§5.3)
+     ============================================================ */
+  .activity-win { width: min(560px, calc(100vw - 24px)); height: min(660px, calc(100vh - 48px)); display: flex; flex-direction: column; }
+  .activity-body { flex: 1; overflow-y: auto; padding: 0 0 16px; }
+  .tabs { display: flex; gap: 2px; padding: 8px 12px; border-bottom: 0.5px solid var(--color-border-hairline); background: var(--color-surface-2); }
+  .tabs button {
+    flex: 1; border: 0; background: transparent; color: var(--color-text-secondary);
+    font-family: var(--font); font-size: var(--fs-subhead); font-weight: 600; padding: 6px 4px; border-radius: 6px;
+    transition: background 0.15s ease, color 0.15s ease;
+  }
+  .tabs button.sel { background: var(--color-accent); color: #fff; }
+  .perm-banner {
+    margin: 12px; padding: 10px 12px; border-radius: var(--radius-md);
+    background: rgba(255,159,10,0.12); border: 0.5px solid rgba(255,159,10,0.3); font-size: var(--fs-caption1); color: var(--color-text-primary);
+  }
+  .perm-banner.hidden { display: none; }
+  .perm-banner .pb-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .status-row { display: flex; align-items: center; gap: 6px; padding: 8px 14px 4px; font-size: var(--fs-caption1); color: var(--color-text-secondary); }
+  .status-row .dot { width: 7px; height: 7px; border-radius: 50%; background: #30D158; box-shadow: 0 0 8px rgba(48,209,88,0.6); }
+  .status-row.paused .dot { background: var(--color-text-tertiary); box-shadow: none; }
+  .tab-pane { padding: 8px 14px; }
+  .tab-pane.hidden { display: none; }
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .metric-card { background: var(--color-surface-2); border: 0.5px solid var(--color-border-hairline); border-radius: var(--radius-md); padding: 10px 12px; }
+  .metric-card .mv { font-size: var(--fs-title2); font-weight: 700; letter-spacing: -0.4px; font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+  .metric-card .mk { font-size: var(--fs-caption1); color: var(--color-text-secondary); margin-top: 2px; }
+  .sec-head { font-size: var(--fs-headline); font-weight: 700; letter-spacing: -0.3px; margin: 18px 0 8px; }
+  .timeline { display: flex; align-items: flex-end; gap: 2px; height: 64px; padding: 6px 0; }
+  .timeline .bar { flex: 1; border-radius: 2px 2px 0 0; background: var(--color-text-tertiary); min-height: 3px; transition: background 0.4s ease; }
+  .timeline .bar.active { background: var(--color-accent); }
+  .timeline-axis { display: flex; justify-content: space-between; font-size: 9px; color: var(--color-text-tertiary); }
+  .cmp-bar-row { margin: 8px 0; }
+  .cmp-bar-row .cbl { display: flex; justify-content: space-between; font-size: var(--fs-caption1); color: var(--color-text-secondary); margin-bottom: 3px; }
+  .cmp-track { height: 8px; border-radius: 4px; background: var(--color-surface-2); overflow: hidden; display: flex; }
+  .cmp-track .real { background: var(--color-accent); }
+  .cmp-track .synth { background: rgba(127,127,127,0.5); }
+  .insights { width: 100%; border-collapse: collapse; font-size: var(--fs-caption1); }
+  .insights td { padding: 6px 0; border-bottom: 0.5px solid var(--color-border-hairline); }
+  .insights td:first-child { color: var(--color-text-secondary); }
+  .insights td:last-child { text-align: right; color: var(--color-text-primary); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .byday { display: flex; flex-direction: column; gap: 4px; }
+  .byday-row { display: flex; align-items: center; gap: 8px; font-size: var(--fs-caption1); }
+  .byday-row .bd-day { width: 68px; color: var(--color-text-secondary); }
+  .byday-row .bd-track { flex: 1; height: 8px; border-radius: 4px; background: var(--color-surface-2); overflow: hidden; }
+  .byday-row .bd-fill { height: 100%; background: var(--color-accent); border-radius: 4px; }
+  .byday-row .bd-val { width: 62px; text-align: right; font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+  .persist-note { font-size: var(--fs-caption2); color: var(--color-text-tertiary); margin-top: 10px; }
+  #trailReplay { width: 100%; height: 220px; border-radius: var(--radius-md); background: #050608; display: block; }
+  [data-theme="light"] #trailReplay { background: #F2F2F4; }
+  .trail-caption { font-size: var(--fs-caption1); color: var(--color-text-secondary); margin: 8px 0; }
+  .trail-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .trail-details { display: none; margin-top: 10px; }
+  .trail-details.open { display: block; }
+  .checkline { display: flex; align-items: center; gap: 8px; font-size: var(--fs-caption1); color: var(--color-text-secondary); margin-top: 8px; }
+
+  /* Idle mode (§5.7) */
+  #synthCursor {
+    position: fixed; top: 0; left: 0; width: 12px; height: 12px; border-radius: 50%;
+    background: rgba(var(--trail-rgb),1); box-shadow: 0 0 16px rgba(var(--trail-rgb),0.9), 0 0 44px rgba(var(--trail-rgb),0.4);
+    z-index: 400; pointer-events: none; opacity: 0; transition: opacity 0.8s ease;
+  }
+  body.idle #synthCursor.animate { opacity: 1; animation: drift 18s ease-in-out infinite; }
+  @keyframes drift {
+    0% { transform: translate(12vw,70vh);} 20% { transform: translate(32vw,28vh);}
+    40% { transform: translate(64vw,54vh);} 60% { transform: translate(84vw,26vh);}
+    80% { transform: translate(46vw,76vh);} 100% { transform: translate(12vw,70vh);}
+  }
+  #vignette {
+    position: fixed; inset: 0; z-index: 300; pointer-events: none; opacity: 0;
+    background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.42) 100%);
+    transition: opacity 0.6s ease;
+  }
+  [data-theme="light"] #vignette { background: radial-gradient(ellipse at center, transparent 45%, rgba(0,0,0,0.18) 100%); }
+  body.idle #vignette { opacity: 1; }
+
+  @media (max-width: 720px) {
+    :root { --dock-icon-size: 68px; }
+    .dock-item .tile.mj span { font-size: 30px; }
+    .dock-item .tile.notes { font-size: 34px; }
+    .dock-item .tile.github svg { width: 40px; height: 40px; }
+    .dock-item .tile.folder svg { width: 62px; height: 52px; }
+    .dock-item .tile { border-radius: 16px; }
   }
 </style>
 </head>
 <body>
 
-<div class="ambient"></div>
+<!-- Trail canvas = desktop (§5.4) -->
 <canvas id="trail"></canvas>
-<div id="cursor"></div>
+<div id="vignette"></div>
 <div id="synthCursor"></div>
 
-<!-- ============ Boot icon ============ -->
-<div id="bootIcon" class="mj-tile"><span>MJ</span></div>
+<!-- Boot (§4) -->
+<div id="boot"><div id="bootIcon" class="mj-tile"><span>MJ</span></div></div>
 
-<!-- ============ Menu bar ============ -->
+<!-- Menu bar (§5.1) -->
 <header class="menubar" id="menubar">
   <div class="left">
-    <div class="mb-item app-name">MickJigger</div>
+    <span class="mb-item brand">MickJigger</span>
   </div>
   <div class="right">
     <div class="lang-wrap">
@@ -800,640 +543,871 @@
         <span class="flag" id="langFlag">🇬🇧</span><span id="langCode">EN</span>
       </button>
       <div class="lang-menu" id="langMenu" role="menu">
-        <button data-lang="en" class="active"><span>🇬🇧</span><span>English</span><span class="check">✓</span></button>
-        <button data-lang="ua"><span>🇺🇦</span><span>Українська</span><span class="check">✓</span></button>
+        <button data-lang="en" class="sel" role="menuitem"><span>🇬🇧</span><span>English</span><span class="check">✓</span></button>
+        <button data-lang="ua" role="menuitem"><span>🇺🇦</span><span>Українська</span><span class="check">✓</span></button>
       </div>
     </div>
-    <button class="mb-item" id="mjMenuIcon" aria-label="Mick Jigger">
-      <span class="mj-tile"><span>MJ</span></span>
-    </button>
-    <button class="mb-item" id="themeToggle" aria-label="Toggle theme">🌙</button>
-    <div class="mb-item" id="clock">—</div>
+    <button class="mb-item" id="themeToggle" aria-label="Toggle light or dark theme">🌙</button>
+    <button class="mb-item" id="mjMenuIcon" aria-label="Open Mick Jigger menu"><span class="mj-tile"><span>MJ</span></span></button>
+    <span class="mb-item" id="clock">—</span>
   </div>
 </header>
 
-<!-- ============ Trail Score widget ============ -->
-<aside class="widget" id="widget">
-  <div class="grip" aria-hidden="true"></div>
-  <div class="widget-label" data-i18n="hudLabel">Trail Score</div>
-  <div class="widget-score" id="hudScore">0</div>
-  <div class="widget-meters" id="hudMeters">0.0 m moved</div>
-</aside>
-
-<!-- ============ Dock ============ -->
+<!-- Dock (§5.5) -->
 <nav class="dock-wrap" id="dockWrap">
   <div class="dock" id="dock">
-    <button class="dock-item" id="dockMj" aria-label="Mick Jigger">
-      <span class="label">Mick Jigger</span>
-      <span class="tile mj mj-tile"><span>MJ</span></span>
+    <button class="dock-item" id="dockMj"><span class="tip">Mick Jigger</span><span class="tile mj mj-tile"><span>MJ</span></span></button>
+    <button class="dock-item" id="dockFolder"><span class="tip" data-i18n="dockFolder">Releases</span>
+      <span class="tile folder"><svg viewBox="0 0 118 100"><path d="M6 16 a10 10 0 0 1 10-10 h26 l10 11 h44 a10 10 0 0 1 10 10 v6 H6 z" fill="#4A9DEB"/><rect x="6" y="26" width="106" height="66" rx="10" fill="url(#fg)"/><defs><linearGradient id="fg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7CC2F7"/><stop offset="1" stop-color="#3E8FE0"/></linearGradient></defs></svg></span>
     </button>
-    <button class="dock-item" id="dockFolder" aria-label="Releases">
-      <span class="label" data-i18n="dockFolder">Releases</span>
-      <span class="tile folder">
-        <svg viewBox="0 0 100 84">
-          <path d="M6 14 a8 8 0 0 1 8-8 h22 l8 9 h36 a8 8 0 0 1 8 8 v6 H6 z" fill="#4A9DEB"/>
-          <rect x="6" y="24" width="88" height="54" rx="8" fill="url(#folderGrad)"/>
-          <defs>
-            <linearGradient id="folderGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#7CC2F7"/>
-              <stop offset="1" stop-color="#3E8FE0"/>
-            </linearGradient>
-          </defs>
-        </svg>
-      </span>
-    </button>
-    <button class="dock-item" id="dockNotes" aria-label="Notes">
-      <span class="label" data-i18n="dockNotes">Getting Started</span>
-      <span class="tile notes">📝</span>
-    </button>
-    <button class="dock-item" id="dockGithub" aria-label="GitHub">
-      <span class="label">GitHub</span>
-      <span class="tile github">
-        <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-      </span>
+    <button class="dock-item" id="dockNotes"><span class="tip" data-i18n="dockNotes">Getting Started</span><span class="tile notes">📝</span></button>
+    <button class="dock-item" id="dockGithub"><span class="tip">GitHub</span>
+      <span class="tile github"><svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg></span>
     </button>
   </div>
 </nav>
 
-<!-- ============ Folder stack ============ -->
+<!-- Folder fan-stack (§5.5) -->
 <div class="stack" id="stack">
-  <button class="card" data-doc="v100">
-    <div class="card-emoji">📄</div>
-    <div class="card-title">v1.0.0</div>
-    <div class="card-sub" data-i18n="card1Sub">Initial release</div>
-  </button>
-  <button class="card" data-doc="v110">
-    <div class="card-emoji">📄</div>
-    <div class="card-title">v1.1.0</div>
-    <div class="card-sub" data-i18n="card2Sub">Activity tracking + Trail</div>
-  </button>
-  <button class="card" data-doc="readme">
-    <div class="card-emoji">📖</div>
-    <div class="card-title">README</div>
-    <div class="card-sub" data-i18n="card3Sub">Getting started</div>
-  </button>
+  <button class="card" data-doc="v100"><div class="c-emoji">📄</div><div class="c-title">v1.0.0</div><div class="c-sub" data-i18n="rel100">Initial Release</div></button>
+  <button class="card" data-doc="v110"><div class="c-emoji">📄</div><div class="c-title">v1.1.0</div><div class="c-sub" data-i18n="rel110">Activity Tracking + Trail</div></button>
+  <button class="card" data-doc="readme"><div class="c-emoji">📖</div><div class="c-title">README</div><div class="c-sub" data-i18n="relReadme">Getting started</div></button>
 </div>
 
-<!-- ============ MJ Popover ============ -->
+<!-- Trail Score widget (§5.6) -->
+<aside class="widget" id="widget">
+  <div class="grip" aria-hidden="true"></div>
+  <div class="wlabel" data-i18n="trailScore">Trail Score</div>
+  <div class="wscore" id="wScore">0</div>
+  <div class="wmeters" id="wMeters">0.0 m moved</div>
+</aside>
+
+<!-- Popover (§5.2) -->
 <div class="popover" id="popover" role="dialog" aria-label="Mick Jigger">
   <div class="pop-head">
-    <span class="title">Mick Jigger</span>
+    <div class="htext">
+      <div class="htitle">Mick Jigger <span class="status-dot" id="popDot"></span><span class="hstatus" id="popStatus" data-i18n="inactive">Inactive</span></div>
+      <div class="subline" id="popSubline" data-i18n="popInactive">Inactive</div>
+    </div>
     <span class="badge">DEMO</span>
+    <button class="switch" id="popSwitch" role="switch" aria-checked="false" aria-label="Toggle jiggling"></button>
   </div>
-  <div class="pop-row">
-    <span class="status">
-      <span class="status-dot" id="statusDot"></span>
-      <span id="statusText" data-i18n="statusInactive">Inactive</span>
-    </span>
-    <button class="switch" id="mjSwitch" role="switch" aria-checked="false" aria-label="Toggle Mick Jigger"></button>
-  </div>
-  <div class="pop-section-label" data-i18n="intervalLabel">Jiggle interval</div>
-  <div class="segmented" id="intervalCtl">
-    <button data-sec="30" class="active">30s</button>
-    <button data-sec="60" data-i18n="int1m">1 min</button>
-    <button data-sec="120" data-i18n="int2m">2 min</button>
-    <button data-sec="300" data-i18n="int5m">5 min</button>
-  </div>
-  <div class="pop-section-label" data-i18n="activityLabel">Activity</div>
-  <div class="stats-grid">
-    <div class="stat"><div class="v" id="statSession">0:00</div><div class="k" data-i18n="statSession">Session</div></div>
-    <div class="stat"><div class="v" id="statJiggles">0</div><div class="k" data-i18n="statJiggles">Jiggles</div></div>
-    <div class="stat"><div class="v" id="statDistance">0.0m</div><div class="k" data-i18n="statDistance">Moved</div></div>
-  </div>
-  <p class="pop-foot" data-i18n="popFoot">Mick Jigger prevents your Mac from sleeping</p>
-</div>
 
-<!-- ============ Idle hint ============ -->
-<div class="idle-hint" id="idleHint"><span data-i18n="idleHint"><span class="mj-word">Mick Jigger</span> is keeping your Mac awake</span></div>
-
-<!-- ============ Doc modal ============ -->
-<div class="modal-backdrop" id="modalBackdrop"></div>
-<div class="doc-window" id="docWindow" role="dialog" aria-modal="true">
-  <div class="doc-titlebar">
-    <div class="traffic">
-      <button class="red" id="docClose" aria-label="Close"></button>
-      <button class="yellow" aria-label="Minimize"></button>
-      <button class="green" aria-label="Zoom"></button>
-    </div>
-    <span class="doc-title" id="docTitle"></span>
-  </div>
-  <div class="doc-body">
-    <div id="docContent"></div>
-    <div class="doc-version">
-      <span>Mick Jigger</span>
-      <span>v1.1.0</span>
+  <div class="pop-section">
+    <div class="pop-label" data-i18n="jiggleInterval">Jiggle interval</div>
+    <div class="segmented" id="segInterval">
+      <button data-v="30" class="sel">30s</button><button data-v="60" data-i18n="min1">1min</button><button data-v="120" data-i18n="min2">2min</button><button data-v="300" data-i18n="min5">5min</button>
     </div>
   </div>
+
+  <div class="pop-section">
+    <div class="pop-row"><span class="rlabel" data-i18n="randomize">Randomize interval (±30%)</span><button class="switch on" id="swRandomize" role="switch" aria-checked="true"></button></div>
+  </div>
+
+  <div class="pop-section">
+    <div class="pop-label" data-i18n="movementDistance">Movement distance</div>
+    <div class="segmented" id="segDistance">
+      <button data-v="small" class="sel" data-i18n="small">Small</button><button data-v="medium" data-i18n="medium">Medium</button><button data-v="large" data-i18n="large">Large</button>
+    </div>
+  </div>
+
+  <div class="pop-section">
+    <div class="pop-label" data-i18n="interaction">Interaction</div>
+    <div class="pop-row"><span class="rlabel" data-i18n="simClicks">Simulate clicks</span><button class="switch" id="swClicks" role="switch" aria-checked="false"></button></div>
+    <div class="pop-subrow hidden" id="clickEveryRow">
+      <span class="slabel" data-i18n="clickEvery">Click every:</span>
+      <div class="segmented" id="segClickEvery" style="flex:1">
+        <button data-v="30" class="sel">30s</button><button data-v="60" data-i18n="min1">1min</button><button data-v="120" data-i18n="min2">2min</button><button data-v="300" data-i18n="min5">5min</button>
+      </div>
+    </div>
+    <div class="pop-row"><span class="rlabel" data-i18n="simScroll">Simulate scrolling</span><button class="switch" id="swScroll" role="switch" aria-checked="false"></button></div>
+    <div class="warn hidden" id="interactionWarn" data-i18n="interactionWarn">⚠ Click or scroll simulation can interact with whatever is under the cursor.</div>
+  </div>
+
+  <div class="pop-section">
+    <div class="pop-row"><span class="rlabel" data-i18n="autoStart">Auto-start after inactivity</span><button class="switch" id="swAutoStart" role="switch" aria-checked="false"></button></div>
+    <div class="pop-subrow hidden" id="startAfterRow">
+      <span class="slabel" data-i18n="startAfter">Start after:</span>
+      <div class="segmented" id="segStartAfter" style="flex:1">
+        <button data-v="30" class="sel">30s</button><button data-v="60" data-i18n="min1">1min</button><button data-v="300" data-i18n="min5">5min</button><button data-v="600" data-i18n="min10">10min</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="pop-section accordion" id="marginAccordion">
+    <div class="accordion-head" id="marginHead" role="button" tabindex="0" aria-expanded="false">
+      <span class="pop-label" style="margin:0" data-i18n="safeMargins">Safe area margins</span><span class="chev">▶</span>
+    </div>
+    <div class="accordion-body">
+      <div class="margin-grid">
+        <div class="margin-field"><label data-i18n="mTop">Top</label><input type="number" value="60" aria-label="Top margin"></div>
+        <div class="margin-field"><label data-i18n="mBottom">Bottom</label><input type="number" value="80" aria-label="Bottom margin"></div>
+        <div class="margin-field"><label data-i18n="mLeft">Left</label><input type="number" value="20" aria-label="Left margin"></div>
+        <div class="margin-field"><label data-i18n="mRight">Right</label><input type="number" value="20" aria-label="Right margin"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pop-section">
+    <div class="pop-label" data-i18n="activityTracking">Activity Tracking</div>
+    <div class="pop-stats-line" id="popActivityStats">0 clicks · 0.0 m · 0m active</div>
+    <div class="pop-stats-sub" data-i18n="runsIndependently">Runs independently from jiggling</div>
+    <button class="btn block small" id="openActivityBtn" style="margin-top:8px" data-i18n="activityBtn">Activity…</button>
+  </div>
+
+  <div class="pop-section">
+    <div class="pop-row"><span class="rlabel" data-i18n="launchLogin">Launch at login</span><button class="switch on" id="swLaunch" role="switch" aria-checked="true"></button></div>
+    <button class="btn block small" id="quitBtn" style="margin-top:8px" data-i18n="quit">Quit Mick Jigger</button>
+    <div class="pop-hotkey" data-i18n="hotkeys">⌥⌘J Toggle · ⌥⌘M Auto-start</div>
+    <div class="pop-version">Mick Jigger 1.1.0</div>
+  </div>
 </div>
+
+<!-- Notes window (§5.5 icon 3) -->
+<div class="backdrop" id="notesBackdrop"></div>
+<div class="window notes-win" id="notesWin" role="dialog" aria-modal="true">
+  <div class="titlebar">
+    <div class="traffic"><button class="red" data-close="notes" aria-label="Close"></button><button class="yellow" aria-label="Minimize"></button><button class="green" aria-label="Zoom"></button></div>
+    <span class="wtitle" data-i18n="notesTitle">Getting Started</span>
+  </div>
+  <div class="notes-body">
+    <h2 data-i18n="notesHeading">Getting Started with Mick Jigger</h2>
+    <ol id="notesList">
+      <li data-i18n="ns1">Download the <strong>DMG</strong> from mickjigger.app</li>
+      <li data-i18n="ns2">Move <strong>Mick Jigger</strong> to Applications</li>
+      <li data-i18n="ns3">Launch it and grant <strong>Accessibility</strong> permission</li>
+      <li data-i18n="ns4">Grant <strong>Input Monitoring</strong> for activity tracking</li>
+      <li data-i18n="ns5">Click the <strong>MJ</strong> icon in the menu bar to activate</li>
+    </ol>
+    <div class="notes-ver">Mick Jigger v1.1.0</div>
+  </div>
+</div>
+
+<!-- Doc modal (folder cards) -->
+<div class="backdrop" id="docBackdrop"></div>
+<div class="window doc-win" id="docWin" role="dialog" aria-modal="true">
+  <div class="titlebar">
+    <div class="traffic"><button class="red" data-close="doc" aria-label="Close"></button><button class="yellow" aria-label="Minimize"></button><button class="green" aria-label="Zoom"></button></div>
+    <span class="wtitle" id="docWinTitle"></span>
+  </div>
+  <div class="doc-body"><div id="docContent"></div></div>
+</div>
+
+<!-- Activity window (§5.3) -->
+<div class="backdrop" id="activityBackdrop"></div>
+<div class="window activity-win" id="activityWin" role="dialog" aria-modal="true">
+  <div class="titlebar" id="activityTitlebar">
+    <div class="traffic"><button class="red" data-close="activity" aria-label="Close"></button><button class="yellow" aria-label="Minimize"></button><button class="green" aria-label="Zoom"></button></div>
+    <span class="wtitle" data-i18n="activityTitle">Activity</span>
+  </div>
+  <div class="tabs" id="activityTabs">
+    <button data-tab="today" class="sel" data-i18n="tabToday">Today</button>
+    <button data-tab="week" data-i18n="tabWeek">Week</button>
+    <button data-tab="month" data-i18n="tabMonth">Month</button>
+    <button data-tab="all" data-i18n="tabAll">All Time</button>
+    <button data-tab="trail" data-i18n="tabTrail">Trail</button>
+  </div>
+  <div class="activity-body">
+    <div class="perm-banner" id="permBanner">
+      <span data-i18n="permText">⚠ Activity tracking needs Input Monitoring permission — nothing leaves this Mac.</span>
+      <div class="pb-actions">
+        <button class="btn small accent" id="enableTrackingBtn" data-i18n="enableTracking">Enable Activity Tracking</button>
+        <button class="btn small" id="openSettingsBtn" data-i18n="openSettings">Open System Settings</button>
+      </div>
+    </div>
+    <div class="status-row" id="statusRow"><span class="dot"></span><span id="statusText">Tracking — started —</span></div>
+    <div class="tab-pane" id="pane-today"></div>
+    <div class="tab-pane hidden" id="pane-week"></div>
+    <div class="tab-pane hidden" id="pane-month"></div>
+    <div class="tab-pane hidden" id="pane-all"></div>
+    <div class="tab-pane hidden" id="pane-trail">
+      <canvas id="trailReplay"></canvas>
+      <div class="trail-caption" id="trailCaption">0 samples · real cursor movement only · resets at midnight</div>
+      <label class="checkline"><input type="checkbox" id="trailDetailsToggle"> <span data-i18n="showDetails">Show details</span></label>
+      <div class="trail-details" id="trailDetails"></div>
+      <div class="trail-actions">
+        <button class="btn small accent" id="savePngBtn" data-i18n="savePng">Save as PNG</button>
+        <button class="btn small" id="shareBtn" data-i18n="share">Share</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Demo-mode toast (§0 item 5) -->
+<div id="demoToast" style="position:fixed;z-index:1500;background:var(--color-surface);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:0.5px solid var(--color-border-hairline);border-radius:8px;padding:7px 12px;font-size:var(--fs-caption1);color:var(--color-text-primary);box-shadow:var(--shadow-window);opacity:0;pointer-events:none;transition:opacity 0.2s ease;"></div>
 
 <script>
 (function () {
   "use strict";
 
-  /* ================= i18n ================= */
+  /* ===== Reduced-motion: JS-side check (§2.7), reachable by rAF/interval loops ===== */
+  var reduceMotionMQ = window.matchMedia("(prefers-reduced-motion: reduce)");
+  var reduceMotion = reduceMotionMQ.matches;
+  reduceMotionMQ.addEventListener("change", function (e) { reduceMotion = e.matches; });
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ============================================================
+     i18n (§5.9)
+     ============================================================ */
   var I18N = {
     en: {
-      hudLabel: "Trail Score",
-      metersMoved: " m moved",
-      dockFolder: "Releases",
-      dockNotes: "Getting Started",
-      statusInactive: "Inactive", statusActive: "Active",
-      intervalLabel: "Jiggle interval",
-      int1m: "1 min", int2m: "2 min", int5m: "5 min",
-      activityLabel: "Activity",
-      statSession: "Session", statJiggles: "Jiggles", statDistance: "Moved",
-      popFoot: "Mick Jigger prevents your Mac from sleeping",
-      idleHint: '<span class="mj-word">Mick Jigger</span> is keeping your Mac awake',
-      card1Sub: "Initial release",
-      card2Sub: "Activity tracking + Trail",
-      card3Sub: "Getting started"
+      dockFolder: "Releases", dockNotes: "Getting Started",
+      trailScore: "Trail Score", metersMoved: " m moved",
+      inactive: "Inactive", active: "Active",
+      popInactive: "Inactive", popJiggling: "Jiggling every {s}",
+      jiggleInterval: "Jiggle interval", min1: "1min", min2: "2min", min5: "5min", min10: "10min",
+      randomize: "Randomize interval (±30%)", movementDistance: "Movement distance",
+      small: "Small", medium: "Medium", large: "Large",
+      interaction: "Interaction", simClicks: "Simulate clicks", clickEvery: "Click every:",
+      simScroll: "Simulate scrolling",
+      interactionWarn: "⚠ Click or scroll simulation can interact with whatever is under the cursor.",
+      autoStart: "Auto-start after inactivity", startAfter: "Start after:",
+      safeMargins: "Safe area margins", mTop: "Top", mBottom: "Bottom", mLeft: "Left", mRight: "Right",
+      activityTracking: "Activity Tracking", runsIndependently: "Runs independently from jiggling", activityBtn: "Activity…",
+      launchLogin: "Launch at login", quit: "Quit Mick Jigger",
+      hotkeys: "⌥⌘J Toggle · ⌥⌘M Auto-start",
+      notesTitle: "Getting Started", notesHeading: "Getting Started with Mick Jigger",
+      ns1: "Download the <strong>DMG</strong> from mickjigger.app",
+      ns2: "Move <strong>Mick Jigger</strong> to Applications",
+      ns3: "Launch it and grant <strong>Accessibility</strong> permission",
+      ns4: "Grant <strong>Input Monitoring</strong> for activity tracking",
+      ns5: "Click the <strong>MJ</strong> icon in the menu bar to activate",
+      rel100: "Initial Release", rel110: "Activity Tracking + Trail", relReadme: "Getting started",
+      activityTitle: "Activity", tabToday: "Today", tabWeek: "Week", tabMonth: "Month", tabAll: "All Time", tabTrail: "Trail",
+      permText: "⚠ Activity tracking needs Input Monitoring permission — nothing leaves this Mac.",
+      enableTracking: "Enable Activity Tracking", openSettings: "Open System Settings",
+      trackingStarted: "Tracking — started {t}", trackingPaused: "Tracking paused",
+      showDetails: "Show details", savePng: "Save as PNG", share: "Share",
+      demoMode: "Demo mode — not functional in this preview",
+      idleSubline: "Jiggler active — keeping Mac awake",
+      mActivityScore: "Activity Score", mActiveTime: "Active Time", mClicks: "Clicks", mDoubleClicks: "Double-clicks",
+      mScrolls: "Scrolls", mDistance: "Cursor Distance", mIdleTime: "Idle Time", mLongest: "Longest Session",
+      mAvgSpeed: "Avg Cursor Speed", mMaxSpeed: "Max Cursor Speed",
+      secTimeline: "Activity Timeline", secRealSynth: "Real vs Synthetic", secInsights: "Insights", secByDay: "By day",
+      cmpClicks: "Clicks", cmpScrolls: "Scrolls", cmpDistance: "Distance", real: "real", synthetic: "synthetic",
+      insDistanceToday: "Distance today", insVsYesterday: "vs. yesterday", insMostActive: "Most active hour", insLongest: "Longest session",
+      samples: "{n} samples · real cursor movement only · resets at midnight",
+      persistNote: "All-Time totals are stored locally in this browser only.",
+      copied: "Link copied to clipboard"
     },
     ua: {
-      hudLabel: "Рахунок сліду",
-      metersMoved: " м пройдено",
-      dockFolder: "Релізи",
-      dockNotes: "Початок роботи",
-      statusInactive: "Неактивний", statusActive: "Активний",
-      intervalLabel: "Інтервал джиґлу",
-      int1m: "1 хв", int2m: "2 хв", int5m: "5 хв",
-      activityLabel: "Активність",
-      statSession: "Сесія", statJiggles: "Джиґли", statDistance: "Шлях",
-      popFoot: "Mick Jigger не дає вашому Mac заснути",
-      idleHint: '<span class="mj-word">Mick Jigger</span> тримає ваш Mac активним',
-      card1Sub: "Перший реліз",
-      card2Sub: "Відстеження активності + Слід",
-      card3Sub: "Початок роботи"
+      dockFolder: "Релізи", dockNotes: "Початок роботи",
+      trailScore: "Рахунок сліду", metersMoved: " м пройдено",
+      inactive: "Неактивний", active: "Активний",
+      popInactive: "Неактивний", popJiggling: "Джиґлить кожні {s}",
+      jiggleInterval: "Інтервал джиґлу", min1: "1хв", min2: "2хв", min5: "5хв", min10: "10хв",
+      randomize: "Випадковий інтервал (±30%)", movementDistance: "Відстань руху",
+      small: "Мала", medium: "Середня", large: "Велика",
+      interaction: "Взаємодія", simClicks: "Симулювати кліки", clickEvery: "Клік кожні:",
+      simScroll: "Симулювати прокрутку",
+      interactionWarn: "⚠ Симуляція кліків чи прокрутки може взаємодіяти з тим, що під курсором.",
+      autoStart: "Автозапуск після бездіяльності", startAfter: "Запуск через:",
+      safeMargins: "Безпечні поля", mTop: "Верх", mBottom: "Низ", mLeft: "Ліво", mRight: "Право",
+      activityTracking: "Відстеження активності", runsIndependently: "Працює незалежно від джиґлу", activityBtn: "Активність…",
+      launchLogin: "Запуск під час входу", quit: "Вийти з Mick Jigger",
+      hotkeys: "⌥⌘J Перемкнути · ⌥⌘M Автозапуск",
+      notesTitle: "Початок роботи", notesHeading: "Початок роботи з Mick Jigger",
+      ns1: "Завантажте <strong>DMG</strong> з mickjigger.app",
+      ns2: "Перетягніть <strong>Mick Jigger</strong> у Програми",
+      ns3: "Запустіть і надайте дозвіл <strong>Універсальний доступ</strong>",
+      ns4: "Надайте <strong>Моніторинг вводу</strong> для відстеження активності",
+      ns5: "Натисніть іконку <strong>MJ</strong> у рядку меню, щоб активувати",
+      rel100: "Перший реліз", rel110: "Відстеження активності + Слід", relReadme: "Початок роботи",
+      activityTitle: "Активність", tabToday: "Сьогодні", tabWeek: "Тиждень", tabMonth: "Місяць", tabAll: "Весь час", tabTrail: "Слід",
+      permText: "⚠ Відстеження активності потребує дозволу Моніторинг вводу — нічого не залишає цей Mac.",
+      enableTracking: "Увімкнути відстеження", openSettings: "Відкрити Системні параметри",
+      trackingStarted: "Відстеження — почато о {t}", trackingPaused: "Відстеження призупинено",
+      showDetails: "Показати деталі", savePng: "Зберегти як PNG", share: "Поділитися",
+      demoMode: "Демо-режим — не працює в цьому перегляді",
+      idleSubline: "Джиґлер активний — тримає Mac активним",
+      mActivityScore: "Оцінка активності", mActiveTime: "Активний час", mClicks: "Кліки", mDoubleClicks: "Подвійні кліки",
+      mScrolls: "Прокрутки", mDistance: "Відстань курсора", mIdleTime: "Час бездіяльності", mLongest: "Найдовша сесія",
+      mAvgSpeed: "Сер. швидкість", mMaxSpeed: "Макс. швидкість",
+      secTimeline: "Хронологія активності", secRealSynth: "Реальні та синтетичні", secInsights: "Інсайти", secByDay: "За днями",
+      cmpClicks: "Кліки", cmpScrolls: "Прокрутки", cmpDistance: "Відстань", real: "реальні", synthetic: "синтетичні",
+      insDistanceToday: "Відстань сьогодні", insVsYesterday: "проти вчора", insMostActive: "Найактивніша година", insLongest: "Найдовша сесія",
+      samples: "{n} зразків · лише реальний рух курсора · скидається опівночі",
+      persistNote: "Підсумки за весь час зберігаються лише локально в цьому браузері.",
+      copied: "Посилання скопійовано"
     }
   };
-
-  var DOCS = {
-    en: {
-      readme: {
-        title: "README — Getting Started",
-        html: '<ol>' +
-          '<li>Download the DMG from <strong>mickjigger.app</strong></li>' +
-          '<li>Move <strong>Mick Jigger</strong> to Applications</li>' +
-          '<li>Grant <strong>Accessibility</strong> permission</li>' +
-          '<li>Grant <strong>Input Monitoring</strong> for activity tracking</li>' +
-          '<li>Click the <strong>MJ</strong> icon in the menu bar to activate</li>' +
-        '</ol>'
-      },
-      v100: {
-        title: "v1.0.0 — Initial release",
-        html: '<ul>' +
-          '<li>Menu bar app with one-click activation</li>' +
-          '<li>Adjustable jiggle interval: <strong>30s, 1, 2 or 5 minutes</strong></li>' +
-          '<li>Prevents sleep and screen saver while active</li>' +
-          '<li>Launch at login option</li>' +
-        '</ul>'
-      },
-      v110: {
-        title: "v1.1.0 — Activity tracking + Trail",
-        html: '<ul>' +
-          '<li>New <strong>Activity Tracking</strong> module: session time, jiggle count, distance moved</li>' +
-          '<li>Cursor trail visualization</li>' +
-          '<li>Improved idle detection</li>' +
-          '<li>Bug fixes and performance improvements</li>' +
-        '</ul>'
-      }
-    },
-    ua: {
-      readme: {
-        title: "README — Початок роботи",
-        html: '<ol>' +
-          '<li>Завантажте DMG з <strong>mickjigger.app</strong></li>' +
-          '<li>Перетягніть <strong>Mick Jigger</strong> у Програми</li>' +
-          '<li>Надайте дозвіл <strong>Універсальний доступ</strong></li>' +
-          '<li>Надайте <strong>Моніторинг вводу</strong> для відстеження активності</li>' +
-          '<li>Натисніть іконку <strong>MJ</strong> у рядку меню, щоб активувати</li>' +
-        '</ol>'
-      },
-      v100: {
-        title: "v1.0.0 — Перший реліз",
-        html: '<ul>' +
-          '<li>Застосунок у рядку меню з активацією в один клік</li>' +
-          '<li>Налаштовуваний інтервал джиґлу: <strong>30с, 1, 2 або 5 хвилин</strong></li>' +
-          '<li>Запобігає сну та заставці, поки активний</li>' +
-          '<li>Запуск під час входу в систему</li>' +
-        '</ul>'
-      },
-      v110: {
-        title: "v1.1.0 — Відстеження активності + Слід",
-        html: '<ul>' +
-          '<li>Новий модуль <strong>відстеження активності</strong>: час сесії, кількість джиґлів, відстань</li>' +
-          '<li>Візуалізація сліду курсора</li>' +
-          '<li>Покращене виявлення бездіяльності</li>' +
-          '<li>Виправлення помилок і оптимізація</li>' +
-        '</ul>'
-      }
-    }
-  };
-
   var lang = "en";
-  var currentDoc = null;
+  var t = function (k) { return (I18N[lang] && I18N[lang][k] != null) ? I18N[lang][k] : (I18N.en[k] || k); };
+  var locale = function () { return lang === "ua" ? "uk-UA" : "en-US"; };
 
   function applyLang() {
-    var dict = I18N[lang];
     document.documentElement.lang = lang === "ua" ? "uk" : "en";
     document.querySelectorAll("[data-i18n]").forEach(function (el) {
-      var key = el.getAttribute("data-i18n");
-      if (dict[key] !== undefined) el.innerHTML = dict[key];
+      var v = I18N[lang][el.getAttribute("data-i18n")];
+      if (v != null) el.innerHTML = v;
     });
-    document.getElementById("statusText").textContent = mjActive ? dict.statusActive : dict.statusInactive;
-    document.getElementById("langFlag").textContent = lang === "ua" ? "🇺🇦" : "🇬🇧";
-    document.getElementById("langCode").textContent = lang === "ua" ? "UA" : "EN";
-    langMenu.querySelectorAll("button").forEach(function (b) {
-      b.classList.toggle("active", b.getAttribute("data-lang") === lang);
-    });
-    if (currentDoc) renderDoc(currentDoc);
-    updateHud();
-    renderClock();
+    $("langFlag").textContent = lang === "ua" ? "🇺🇦" : "🇬🇧";
+    $("langCode").textContent = lang === "ua" ? "UA" : "EN";
+    $("langMenu").querySelectorAll("button").forEach(function (b) { b.classList.toggle("sel", b.getAttribute("data-lang") === lang); });
+    renderClock(); refreshPopover(); renderActive(); // re-render dynamic strings
   }
 
-  /* ---- Language dropdown ---- */
-  var langBtn = document.getElementById("langBtn");
-  var langMenu = document.getElementById("langMenu");
-
-  function toggleLangMenu(force) {
-    var open = force !== undefined ? force : !langMenu.classList.contains("open");
-    langMenu.classList.toggle("open", open);
-    langBtn.classList.toggle("open", open);
-    langBtn.setAttribute("aria-expanded", open ? "true" : "false");
-  }
-  langBtn.addEventListener("click", function (e) { e.stopPropagation(); toggleLangMenu(); });
-  langMenu.addEventListener("click", function (e) {
-    var btn = e.target.closest("button[data-lang]");
-    if (!btn) return;
-    e.stopPropagation();
-    lang = btn.getAttribute("data-lang");
-    applyLang();
-    toggleLangMenu(false);
-  });
-
-  /* ================= Theme ================= */
+  /* ============================================================
+     THEME (§5.8) — auto by time, manual override in localStorage
+     ============================================================ */
   var THEME_KEY = "mj-theme";
-  var themeToggle = document.getElementById("themeToggle");
-
-  function autoTheme() {
-    var h = new Date().getHours();
-    return (h >= 6 && h < 20) ? "light" : "dark";
-  }
-  function applyTheme(t) {
-    document.documentElement.setAttribute("data-theme", t);
-    themeToggle.textContent = t === "light" ? "☀️" : "🌙";
-  }
-  var storedTheme = null;
-  try { storedTheme = localStorage.getItem(THEME_KEY); } catch (e) {}
-  applyTheme(storedTheme === "light" || storedTheme === "dark" ? storedTheme : autoTheme());
-
-  themeToggle.addEventListener("click", function () {
+  function autoTheme() { var h = new Date().getHours(); return (h >= 6 && h < 20) ? "light" : "dark"; }
+  function applyTheme(x) { document.documentElement.setAttribute("data-theme", x); $("themeToggle").textContent = x === "light" ? "☀️" : "🌙"; repaintDesktop(); }
+  var stored = null; try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
+  applyTheme(stored === "light" || stored === "dark" ? stored : autoTheme());
+  $("themeToggle").addEventListener("click", function () {
     var next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
-    applyTheme(next);
-    try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
+    applyTheme(next); try { localStorage.setItem(THEME_KEY, next); } catch (e) {}
   });
-  // Follow the clock unless the user chose manually
-  setInterval(function () {
-    var stored = null;
-    try { stored = localStorage.getItem(THEME_KEY); } catch (e) {}
-    if (!stored) applyTheme(autoTheme());
-  }, 60000);
+  setInterval(function () { var s = null; try { s = localStorage.getItem(THEME_KEY); } catch (e) {} if (!s) applyTheme(autoTheme()); }, 60000);
 
-  /* ================= Clock ================= */
-  var clockEl = document.getElementById("clock");
+  /* ============================================================
+     CLOCK (§5.1)
+     ============================================================ */
   function renderClock() {
     var now = new Date();
-    var locale = lang === "ua" ? "uk-UA" : "en-US";
-    var date = now.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" });
-    var time = now.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
-    clockEl.textContent = date + "  " + time;
+    $("clock").textContent = now.toLocaleDateString(locale(), { weekday: "short", month: "short", day: "numeric" }) +
+      "  " + now.toLocaleTimeString(locale(), { hour: "numeric", minute: "2-digit" });
   }
   renderClock();
-  setTimeout(function () {
-    renderClock();
-    setInterval(renderClock, 60000);
-  }, (60 - new Date().getSeconds()) * 1000);
+  setTimeout(function () { renderClock(); setInterval(renderClock, 60000); }, (60 - new Date().getSeconds()) * 1000);
 
-  /* ================= Boot sequence ================= */
-  var bootIcon = document.getElementById("bootIcon");
-  var menubar = document.getElementById("menubar");
-  var dockWrap = document.getElementById("dockWrap");
+  /* ============================================================
+     SEEDED FAKE-DATA GENERATOR (§0 item 6)
+     Seed = today's YYYY-MM-DD, so numbers are stable within a day.
+     Each day derives from its own date string; period totals = sum of days.
+     ============================================================ */
+  function hashSeed(str) { var h = 2166136261 >>> 0; for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  function mulberry32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; var tt = Math.imul(a ^ a >>> 15, 1 | a); tt = tt + Math.imul(tt ^ tt >>> 7, 61 | tt) ^ tt; return ((tt ^ tt >>> 14) >>> 0) / 4294967296; }; }
+  function dateStr(d) { return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+  function clamp01(x) { return x < 0 ? 0 : x > 1 ? 1 : x; }
+  function norm(v, a, b) { return clamp01((v - a) / (b - a)); }
 
-  setTimeout(function () { menubar.classList.add("in"); }, 1200);
-  setTimeout(function () {
-    dockWrap.classList.add("in");
-    bootIcon.classList.add("gone");
-  }, 1650);
-  setTimeout(function () {
-    if (bootIcon.parentNode) bootIcon.parentNode.removeChild(bootIcon);
-  }, 2100);
+  // Activity Score (§0 item 6) — weighted, normalized, capped composite. Ranges are per-DAY;
+  // for multi-day periods we feed daily-AVERAGE metrics so the 0–100 scale stays meaningful
+  // (a resolved spec ambiguity — see report). Totals (clicks/distance/time) still sum exactly.
+  function activityScore(m) {
+    return Math.round(clamp01(
+      0.35 * norm(m.activeMinutes, 0, 480) +
+      0.25 * norm(m.clicks, 0, 5000) +
+      0.25 * norm(m.distanceMeters, 0, 2000) +
+      0.15 * norm(m.scrolls, 0, 30000)
+    , 0, 1) * 100);
+  }
 
-  /* ================= Trail canvas ================= */
-  var canvas = document.getElementById("trail");
-  var ctx = canvas.getContext("2d");
-  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var dayCache = {};
+  function genDay(ds) {
+    if (dayCache[ds]) return dayCache[ds];
+    var r = mulberry32(hashSeed("mj-" + ds));
+    var activeMinutes = Math.round(120 + r() * 320);          // 2h–7.3h
+    var idleMinutes = Math.round(60 + r() * 240);
+    var clicks = Math.round(400 + r() * 3200);
+    var doubleClicks = Math.round(clicks * (0.04 + r() * 0.06));
+    var scrolls = Math.round(3000 + r() * 18000);
+    var distanceMeters = Math.round((120 + r() * 900) * 10) / 10;
+    var longestSessionMin = Math.round(25 + r() * 95);
+    var avgSpeed = Math.round(180 + r() * 260);               // px/s
+    var maxSpeed = Math.round(avgSpeed * (3 + r() * 3));
+    // synthetic split: how much came from the jiggler (§5.3 Real vs Synthetic)
+    var synthFrac = 0.15 + r() * 0.35;
+    var timeline = [];
+    for (var h = 0; h < 24; h++) { var work = h >= 8 && h <= 20; timeline.push(work ? (r() > 0.25 ? 1 : 0) : (r() > 0.85 ? 1 : 0)); }
+    var d = {
+      activeMinutes: activeMinutes, idleMinutes: idleMinutes, clicks: clicks, doubleClicks: doubleClicks,
+      scrolls: scrolls, distanceMeters: distanceMeters, longestSessionMin: longestSessionMin,
+      avgSpeed: avgSpeed, maxSpeed: maxSpeed, timeline: timeline,
+      realClicks: Math.round(clicks * (1 - synthFrac)), synthClicks: Math.round(clicks * synthFrac),
+      realScrolls: Math.round(scrolls * (1 - synthFrac)), synthScrolls: Math.round(scrolls * synthFrac),
+      realDist: Math.round(distanceMeters * (1 - synthFrac) * 10) / 10, synthDist: Math.round(distanceMeters * synthFrac * 10) / 10
+    };
+    dayCache[ds] = d; return d;
+  }
+  function lastNDays(n) { var out = [], today = new Date(); for (var i = 0; i < n; i++) { var d = new Date(today); d.setDate(today.getDate() - i); out.push({ ds: dateStr(d), date: d, m: genDay(dateStr(d)) }); } return out; }
 
+  // Live session counters (§5.10) layered onto today's baseline
+  var live = { clicks: 0, distancePx: 0, startMs: Date.now(), maxSpeed: 0 };
+  var PX_TO_M = 0.000264583; // ~96dpi
+  function liveMeters() { return live.distancePx * PX_TO_M; }
+  function liveActiveMin() { return (Date.now() - live.startMs) / 60000; }
+
+  function aggregate(days, withLive) {
+    var a = { activeMinutes: 0, idleMinutes: 0, clicks: 0, doubleClicks: 0, scrolls: 0, distanceMeters: 0,
+              longestSessionMin: 0, avgSpeedSum: 0, maxSpeed: 0,
+              realClicks: 0, synthClicks: 0, realScrolls: 0, synthScrolls: 0, realDist: 0, synthDist: 0 };
+    days.forEach(function (x) {
+      var m = x.m;
+      a.activeMinutes += m.activeMinutes; a.idleMinutes += m.idleMinutes; a.clicks += m.clicks;
+      a.doubleClicks += m.doubleClicks; a.scrolls += m.scrolls; a.distanceMeters += m.distanceMeters;
+      a.longestSessionMin = Math.max(a.longestSessionMin, m.longestSessionMin);
+      a.avgSpeedSum += m.avgSpeed; a.maxSpeed = Math.max(a.maxSpeed, m.maxSpeed);
+      a.realClicks += m.realClicks; a.synthClicks += m.synthClicks;
+      a.realScrolls += m.realScrolls; a.synthScrolls += m.synthScrolls;
+      a.realDist += m.realDist; a.synthDist += m.synthDist;
+    });
+    if (withLive) {
+      a.clicks += live.clicks; a.realClicks += live.clicks;
+      a.distanceMeters += liveMeters(); a.realDist += liveMeters();
+      a.activeMinutes += liveActiveMin();
+      a.maxSpeed = Math.max(a.maxSpeed, live.maxSpeed);
+    }
+    a.distanceMeters = Math.round(a.distanceMeters * 10) / 10;
+    a.realDist = Math.round(a.realDist * 10) / 10; a.synthDist = Math.round(a.synthDist * 10) / 10;
+    a.avgSpeed = Math.round(a.avgSpeedSum / days.length);
+    a.days = days;
+    return a;
+  }
+
+  /* ============================================================
+     TRAIL CANVAS (§5.4) — the desktop
+     ============================================================ */
+  var canvas = $("trail"), ctx = canvas.getContext("2d"), dpr = Math.min(window.devicePixelRatio || 1, 2);
+  var trailPoints = [];       // stored samples for the Activity "Trail" replay (§5.3)
+  var lastPt = null, lastMid = null, lastT = 0;
+
+  function repaintDesktop() {
+    // Solid theme bg fill (canvas is the desktop). Called on resize + theme change.
+    // Guard: theme init runs before the canvas/ctx section below assigns these (var hoisting).
+    if (typeof ctx === "undefined" || !ctx) return;
+    var f = getComputedStyle(document.documentElement).getPropertyValue("--bg-fade").trim();
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = "rgb(" + f + ")"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.restore();
+  }
   function resize() {
-    canvas.width = Math.floor(innerWidth * dpr);
-    canvas.height = Math.floor(innerHeight * dpr);
-    canvas.style.width = innerWidth + "px";
-    canvas.style.height = innerHeight + "px";
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
+    canvas.width = Math.floor(innerWidth * dpr); canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + "px"; canvas.style.height = innerHeight + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.lineCap = "round"; ctx.lineJoin = "round"; repaintDesktop();
   }
-  resize();
-  window.addEventListener("resize", resize);
+  resize(); window.addEventListener("resize", resize);
 
-  var prev = null;
-  var prevMid = null;
-  var totalPx = 0;
-  var moved = false;
-
-  var PX_TO_M = 0.000264583; // ~96 dpi
-
-  function trailRGB() {
-    return document.documentElement.getAttribute("data-theme") === "light" ? "0, 64, 255" : "74, 126, 255";
-  }
+  function trailColor(a) { var rgb = getComputedStyle(document.documentElement).getPropertyValue("--trail-rgb").trim(); return "rgba(" + rgb + "," + a + ")"; }
 
   function drawSegment(x, y) {
     var now = performance.now();
-    if (!prev) {
-      prev = { x: x, y: y, t: now };
-      prevMid = { x: x, y: y };
-      return;
-    }
-    var dx = x - prev.x, dy = y - prev.y;
-    var dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < 1) return;
-
-    var dt = Math.max(now - prev.t, 1);
-    var speed = dist / dt;
-    totalPx += dist;
-
-    var w = Math.min(1.2 + speed * 3.2, 9);
-    var a = Math.min(0.18 + speed * 0.5, 0.95);
-    var rgb = trailRGB();
-    var mid = { x: (prev.x + x) / 2, y: (prev.y + y) / 2 };
-
-    ctx.strokeStyle = "rgba(" + rgb + ", " + (a * 0.28).toFixed(3) + ")";
-    ctx.lineWidth = w * 2.6;
-    ctx.beginPath();
-    ctx.moveTo(prevMid.x, prevMid.y);
-    ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
-    ctx.stroke();
-
-    ctx.strokeStyle = "rgba(" + rgb + ", " + a.toFixed(3) + ")";
-    ctx.lineWidth = w;
-    ctx.beginPath();
-    ctx.moveTo(prevMid.x, prevMid.y);
-    ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
-    ctx.stroke();
-
-    prev = { x: x, y: y, t: now };
-    prevMid = mid;
-
-    if (!moved) {
-      moved = true;
-      widget.classList.add("visible");
-    }
-    updateHud();
+    if (!lastPt) { lastPt = { x: x, y: y }; lastMid = { x: x, y: y }; lastT = now; return; }
+    var dx = x - lastPt.x, dy = y - lastPt.y, dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist <= 2) return;                                  // §5.4: only sample if moved >2px
+    var dt = Math.max(now - lastT, 1), speedPxs = dist / dt * 1000;
+    live.distancePx += dist; live.maxSpeed = Math.max(live.maxSpeed, Math.round(speedPxs));
+    // Speed → opacity 0.15–0.8, width 0.8–3.5 (§5.4)
+    var sp = clamp01(speedPxs / 2500);
+    var a = 0.15 + sp * 0.65, w = 0.8 + sp * 2.7;
+    var mid = { x: (lastPt.x + x) / 2, y: (lastPt.y + y) / 2 };
+    ctx.strokeStyle = trailColor(a); ctx.lineWidth = w;
+    ctx.beginPath(); ctx.moveTo(lastMid.x, lastMid.y); ctx.quadraticCurveTo(lastPt.x, lastPt.y, mid.x, mid.y); ctx.stroke();
+    lastPt = { x: x, y: y }; lastMid = mid; lastT = now;
+    trailPoints.push({ x: x / innerWidth, y: y / innerHeight }); if (trailPoints.length > 1200) trailPoints.shift();
+    if (!widgetShown) showWidget();
+    updateWidget();
   }
-
+  // Reduced-motion path: redraw a short ring buffer on each move; no autonomous rAF fade.
+  var rmBuf = [];
+  function drawReduced(x, y) {
+    if (rmBuf.length) { var l = rmBuf[rmBuf.length - 1], d = Math.hypot(x - l.x, y - l.y); if (d <= 2) return; live.distancePx += d; }
+    rmBuf.push({ x: x, y: y }); if (rmBuf.length > 48) rmBuf.shift();
+    repaintDesktop();
+    ctx.strokeStyle = trailColor(0.6); ctx.lineWidth = 2; ctx.beginPath();
+    for (var i = 1; i < rmBuf.length; i++) { ctx.moveTo(rmBuf[i - 1].x, rmBuf[i - 1].y); ctx.lineTo(rmBuf[i].x, rmBuf[i].y); }
+    ctx.stroke();
+    trailPoints.push({ x: x / innerWidth, y: y / innerHeight }); if (trailPoints.length > 1200) trailPoints.shift();
+    if (!widgetShown) showWidget(); updateWidget();
+  }
+  // Fade loop (§5.4) — autonomous animation, so it is gated on reduced-motion (§2.7).
   function fadeLoop() {
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = "destination-out";
-    ctx.fillStyle = "rgba(0, 0, 0, 0.04)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.restore();
+    if (reduceMotion) return;                               // stop; reduced path handles drawing
+    var f = getComputedStyle(document.documentElement).getPropertyValue("--bg-fade").trim();
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "rgba(" + f + ",0.04)"; ctx.fillRect(0, 0, canvas.width, canvas.height); ctx.restore();
     requestAnimationFrame(fadeLoop);
   }
-  requestAnimationFrame(fadeLoop);
+  if (!reduceMotion) requestAnimationFrame(fadeLoop);
+  reduceMotionMQ.addEventListener("change", function (e) { if (!e.matches) requestAnimationFrame(fadeLoop); });
 
-  /* ================= Custom cursor ================= */
-  var cursorEl = document.getElementById("cursor");
-  var HOVERABLE = "a, button, .dock-item, .switch, .segmented button, .traffic button, .card, .widget";
-
-  document.addEventListener("mouseover", function (e) {
-    cursorEl.classList.toggle("hover", !!e.target.closest(HOVERABLE));
-  });
-
-  /* ================= Trail Score widget (draggable) ================= */
-  var widget = document.getElementById("widget");
-  var hudScore = document.getElementById("hudScore");
-  var hudMeters = document.getElementById("hudMeters");
-
-  function updateHud() {
-    var meters = totalPx * PX_TO_M;
-    hudScore.textContent = Math.round(totalPx / 10).toLocaleString(lang === "ua" ? "uk-UA" : "en-US");
-    hudMeters.textContent = meters.toFixed(1) + I18N[lang].metersMoved;
-    statDistance.textContent = meters.toFixed(1) + (lang === "ua" ? "м" : "m");
+  /* ============================================================
+     TRAIL SCORE WIDGET (§5.6) — draggable
+     ============================================================ */
+  var widget = $("widget"), widgetShown = false;
+  // Default position is CSS-anchored (right/bottom, §5.6). We convert to left/top only when
+  // the user starts dragging, so we never depend on an early/zero viewport measurement.
+  function showWidget() { widgetShown = true; widget.classList.add("shown"); }
+  function updateWidget() {
+    var m = liveMeters();
+    $("wScore").textContent = Math.round(live.distancePx / 10).toLocaleString(locale());
+    $("wMeters").textContent = m.toFixed(1) + t("metersMoved");
   }
-
-  var drag = null;
-  function startDrag(x, y) {
+  // Drag via mousedown/mousemove/mouseup (§5.6)
+  var wDrag = null;
+  function wStart(x, y) {
     var r = widget.getBoundingClientRect();
-    // switch from right/bottom anchoring to explicit left/top
-    widget.style.left = r.left + "px";
-    widget.style.top = r.top + "px";
-    widget.style.right = "auto";
-    widget.style.bottom = "auto";
-    widget.classList.add("dragging");
-    drag = { dx: x - r.left, dy: y - r.top, w: r.width, h: r.height };
+    // switch from right/bottom anchoring to explicit left/top so it stays where dropped
+    widget.style.left = r.left + "px"; widget.style.top = r.top + "px"; widget.style.right = "auto"; widget.style.bottom = "auto";
+    widget.classList.add("dragging"); wDrag = { dx: x - r.left, dy: y - r.top, w: r.width, h: r.height };
   }
-  function moveDrag(x, y) {
-    if (!drag) return;
-    var nx = Math.min(Math.max(x - drag.dx, 4), innerWidth - drag.w - 4);
-    var ny = Math.min(Math.max(y - drag.dy, 32), innerHeight - drag.h - 4);
-    widget.style.left = nx + "px";
-    widget.style.top = ny + "px";
-  }
-  function endDrag() {
-    drag = null;
-    widget.classList.remove("dragging");
-  }
-  widget.addEventListener("mousedown", function (e) {
-    e.preventDefault();
-    startDrag(e.clientX, e.clientY);
-  });
-  widget.addEventListener("touchstart", function (e) {
-    var t = e.touches[0];
-    if (t) startDrag(t.clientX, t.clientY);
-  }, { passive: true });
-  document.addEventListener("mouseup", endDrag);
-  document.addEventListener("touchend", endDrag);
+  function wMove(x, y) { if (!wDrag) return; widget.style.left = Math.min(Math.max(x - wDrag.dx, 4), innerWidth - wDrag.w - 4) + "px"; widget.style.top = Math.min(Math.max(y - wDrag.dy, 30), innerHeight - wDrag.h - 4) + "px"; }
+  function wEnd() { wDrag = null; widget.classList.remove("dragging"); }
+  widget.addEventListener("mousedown", function (e) { e.preventDefault(); wStart(e.clientX, e.clientY); });
+  widget.addEventListener("touchstart", function (e) { var p = e.touches[0]; if (p) wStart(p.clientX, p.clientY); }, { passive: true });
 
-  /* ================= Idle mode (10s) ================= */
-  var idleTimer = null;
-  var IDLE_MS = 10000;
-  var mjMenuIcon = document.getElementById("mjMenuIcon");
-
+  /* ============================================================
+     IDLE MODE (§5.7)
+     ============================================================ */
+  var idleTimer = null, IDLE_MS = 10000, synthEl = $("synthCursor");
   function armIdle() {
     clearTimeout(idleTimer);
-    if (document.body.classList.contains("idle")) {
-      document.body.classList.remove("idle");
-      mjMenuIcon.classList.remove("pulse");
-    }
+    if (document.body.classList.contains("idle")) { document.body.classList.remove("idle"); synthEl.classList.remove("animate"); refreshPopover(); }
     idleTimer = setTimeout(function () {
       document.body.classList.add("idle");
-      mjMenuIcon.classList.add("pulse");
+      if (!reduceMotion) synthEl.classList.add("animate");  // synthetic drift gated on reduced-motion (§2.7)
+      refreshPopover();
     }, IDLE_MS);
   }
-  armIdle();
 
-  /* ================= Pointer handling ================= */
+  /* ============================================================
+     GLOBAL POINTER (native cursor stays visible — §2.7/§0)
+     ============================================================ */
   function onMove(x, y) {
-    cursorEl.classList.add("on");
-    cursorEl.style.transform = "translate(" + (x - 4) + "px, " + (y - 4) + "px)";
-    if (drag) {
-      moveDrag(x, y);
-    } else {
-      drawSegment(x, y);
-    }
+    if (wDrag) { wMove(x, y); }
+    else if (reduceMotion) { drawReduced(x, y); }
+    else { drawSegment(x, y); }
     armIdle();
   }
   document.addEventListener("mousemove", function (e) { onMove(e.clientX, e.clientY); });
-  document.addEventListener("touchmove", function (e) {
-    var t = e.touches[0];
-    if (t) onMove(t.clientX, t.clientY);
-  }, { passive: true });
-  document.addEventListener("touchstart", function (e) {
-    var t = e.touches[0];
-    if (t) { prev = null; onMove(t.clientX, t.clientY); }
-  }, { passive: true });
-  document.addEventListener("mouseleave", function () { prev = null; });
+  document.addEventListener("touchmove", function (e) { var p = e.touches[0]; if (p) onMove(p.clientX, p.clientY); }, { passive: true });
+  document.addEventListener("mouseup", wEnd); document.addEventListener("touchend", wEnd);
+  document.addEventListener("mouseleave", function () { lastPt = null; });
+  // Canvas clicks counted as live "clicks" (§5.10)
+  canvas.addEventListener("click", function () { live.clicks++; refreshPopover(); });
 
-  /* ================= Popover ================= */
-  var popover = document.getElementById("popover");
-  var dockMj = document.getElementById("dockMj");
+  /* ============================================================
+     DEMO-MODE toast (§0 item 5) — shared for all fake OS actions
+     ============================================================ */
+  var toast = $("demoToast"), toastTimer = null;
+  function showDemo(el) {
+    toast.textContent = t("demoMode");
+    var r = el.getBoundingClientRect();
+    toast.style.opacity = "1";
+    var tx = Math.min(Math.max(r.left + r.width / 2 - toast.offsetWidth / 2, 8), innerWidth - toast.offsetWidth - 8);
+    var ty = r.top - toast.offsetHeight - 8; if (ty < 30) ty = r.bottom + 8;
+    toast.style.left = tx + "px"; toast.style.top = ty + "px";
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { toast.style.opacity = "0"; }, 1800);
+  }
 
+  /* ============================================================
+     POPOVER (§5.2)
+     ============================================================ */
+  var popover = $("popover"), jiggling = false, jiggleSec = 30;
   function togglePopover(force) {
     var open = force !== undefined ? force : !popover.classList.contains("open");
     popover.classList.toggle("open", open);
-    mjMenuIcon.classList.toggle("open", open);
+    $("mjMenuIcon").classList.toggle("active-dot", open);
+    $("dockMj").classList.toggle("running", open);
   }
-  mjMenuIcon.addEventListener("click", function (e) { e.stopPropagation(); togglePopover(); });
-  dockMj.addEventListener("click", function (e) { e.stopPropagation(); togglePopover(); });
+  $("mjMenuIcon").addEventListener("click", function (e) { e.stopPropagation(); togglePopover(); });
+  $("dockMj").addEventListener("click", function (e) { e.stopPropagation(); togglePopover(); });
 
-  /* ---- Toggle switch + status ---- */
-  var mjActive = false;
-  var mjSwitch = document.getElementById("mjSwitch");
-  var statusDot = document.getElementById("statusDot");
-  var statusText = document.getElementById("statusText");
-  var jiggles = 0;
-  var jiggleInterval = 30;
-  var jiggleTimer = null;
-
-  function setActive(on) {
-    mjActive = on;
-    mjSwitch.classList.toggle("on", on);
-    mjSwitch.setAttribute("aria-checked", on ? "true" : "false");
-    statusDot.classList.toggle("on", on);
-    statusText.textContent = on ? I18N[lang].statusActive : I18N[lang].statusInactive;
-    dockMj.classList.toggle("running", on);
-    scheduleJiggle();
+  function refreshPopover() {
+    $("popDot").classList.toggle("on", jiggling);
+    $("popStatus").textContent = jiggling ? t("active") : t("inactive");
+    var sub;
+    if (document.body.classList.contains("idle") && jiggling) sub = t("idleSubline");
+    else if (jiggling) sub = t("popJiggling").replace("{s}", jiggleSec + "s");
+    else sub = t("popInactive");
+    $("popSubline").textContent = sub;
+    $("popActivityStats").textContent = live.clicks + " " + (lang === "ua" ? "кліків" : "clicks") + " · " +
+      liveMeters().toFixed(1) + " m · " + Math.floor(liveActiveMin()) + "m active";
   }
-  function scheduleJiggle() {
-    clearInterval(jiggleTimer);
-    if (!mjActive) return;
-    jiggleTimer = setInterval(function () {
-      jiggles++;
-      statJiggles.textContent = jiggles;
-    }, jiggleInterval * 1000);
-  }
-  mjSwitch.addEventListener("click", function () { setActive(!mjActive); });
+  // header switch = jiggling on/off (decorative — §0 item 4)
+  function setJiggling(on) { jiggling = on; $("popSwitch").classList.toggle("on", on); $("popSwitch").setAttribute("aria-checked", on ? "true" : "false"); $("dockMj").classList.toggle("running", on || popover.classList.contains("open")); refreshPopover(); }
+  $("popSwitch").addEventListener("click", function () { setJiggling(!jiggling); });
 
-  var intervalCtl = document.getElementById("intervalCtl");
-  intervalCtl.addEventListener("click", function (e) {
-    var btn = e.target.closest("button");
-    if (!btn) return;
-    intervalCtl.querySelectorAll("button").forEach(function (b) { b.classList.remove("active"); });
-    btn.classList.add("active");
-    jiggleInterval = parseInt(btn.getAttribute("data-sec"), 10);
-    scheduleJiggle();
+  // Generic switch toggles (decorative)
+  function bindSwitch(id, onChange) {
+    var el = $(id);
+    el.addEventListener("click", function () {
+      var on = !el.classList.contains("on");
+      el.classList.toggle("on", on); el.setAttribute("aria-checked", on ? "true" : "false");
+      if (onChange) onChange(on);
+    });
+  }
+  bindSwitch("swRandomize");
+  bindSwitch("swClicks", function (on) { $("clickEveryRow").classList.toggle("hidden", !on); updateInteractionWarn(); });
+  bindSwitch("swScroll", function () { updateInteractionWarn(); });
+  bindSwitch("swAutoStart", function (on) { $("startAfterRow").classList.toggle("hidden", !on); });
+  bindSwitch("swLaunch", function () { showDemo($("swLaunch")); }); // Launch at login = real OS action → demo note
+  function updateInteractionWarn() { $("interactionWarn").classList.toggle("hidden", !($("swClicks").classList.contains("on") || $("swScroll").classList.contains("on"))); }
+
+  // Segmented controls
+  function bindSegmented(id, onChange) {
+    var el = $(id);
+    el.addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      el.querySelectorAll("button").forEach(function (x) { x.classList.remove("sel"); });
+      b.classList.add("sel"); if (onChange) onChange(b.getAttribute("data-v"));
+    });
+  }
+  bindSegmented("segInterval", function (v) { jiggleSec = parseInt(v, 10); refreshPopover(); });
+  bindSegmented("segDistance"); bindSegmented("segClickEvery"); bindSegmented("segStartAfter");
+
+  // Safe-area accordion (chevron rotates on expand — §5.2)
+  var marginAcc = $("marginAccordion"), marginHead = $("marginHead");
+  function toggleMargins() { var open = marginAcc.classList.toggle("open"); marginHead.setAttribute("aria-expanded", open ? "true" : "false"); }
+  marginHead.addEventListener("click", toggleMargins);
+  marginHead.addEventListener("keydown", function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleMargins(); } });
+
+  $("quitBtn").addEventListener("click", function () { showDemo($("quitBtn")); });      // Quit = no-op demo (§5.2)
+  $("openActivityBtn").addEventListener("click", function () { openActivity(); });
+
+  /* ============================================================
+     NOTES / FOLDER / DOC windows (§5.5)
+     ============================================================ */
+  function openWin(win, backdrop) { win.classList.add("open"); backdrop.classList.add("open"); }
+  function closeWin(win, backdrop) { win.classList.remove("open"); backdrop.classList.remove("open"); }
+
+  $("dockNotes").addEventListener("click", function () { $("dockNotes").classList.add("running"); openWin($("notesWin"), $("notesBackdrop")); });
+  $("notesBackdrop").addEventListener("click", function () { closeWin($("notesWin"), $("notesBackdrop")); $("dockNotes").classList.remove("running"); });
+
+  // Folder fan-stack
+  var stack = $("stack");
+  function toggleStack(force) { var open = force !== undefined ? force : !stack.classList.contains("open"); stack.classList.toggle("open", open); $("dockFolder").classList.toggle("running", open); }
+  $("dockFolder").addEventListener("click", function (e) { e.stopPropagation(); toggleStack(); });
+
+  var DOCS = {
+    en: {
+      v100: { title: "v1.0.0", html: "<h2>v1.0.0 — Initial Release</h2><ul><li>Menu-bar app with one-click activation</li><li>Adjustable jiggle interval: <strong>30s, 1, 2 or 5 minutes</strong></li><li>Prevents sleep and screen saver while active</li><li>Launch at login option</li></ul>" },
+      v110: { title: "v1.1.0", html: "<h2>v1.1.0 — Activity Tracking + Trail</h2><ul><li>New <strong>Activity Tracking</strong> module: session time, clicks, distance, score</li><li>Cursor <strong>Trail</strong> visualization</li><li>Improved idle detection</li><li>Bug fixes and performance improvements</li></ul>" },
+      readme: { title: "README", html: "<h2>README — Getting started</h2><ul><li>Mick Jigger keeps your Mac awake by nudging the cursor</li><li>Configure interval, randomization and movement distance in the menu-bar popover</li><li>Activity Tracking runs independently and never leaves your Mac</li><li>See the Getting Started note for install steps</li></ul>" }
+    },
+    ua: {
+      v100: { title: "v1.0.0", html: "<h2>v1.0.0 — Перший реліз</h2><ul><li>Застосунок у рядку меню з активацією в один клік</li><li>Налаштовуваний інтервал: <strong>30с, 1, 2 або 5 хвилин</strong></li><li>Запобігає сну та заставці, поки активний</li><li>Опція запуску під час входу</li></ul>" },
+      v110: { title: "v1.1.0", html: "<h2>v1.1.0 — Відстеження активності + Слід</h2><ul><li>Новий модуль <strong>відстеження активності</strong>: час сесії, кліки, відстань, оцінка</li><li>Візуалізація <strong>сліду</strong> курсора</li><li>Покращене виявлення бездіяльності</li><li>Виправлення помилок і оптимізація</li></ul>" },
+      readme: { title: "README", html: "<h2>README — Початок роботи</h2><ul><li>Mick Jigger тримає ваш Mac активним, підштовхуючи курсор</li><li>Налаштуйте інтервал, випадковість і відстань у попапі рядка меню</li><li>Відстеження активності працює незалежно й не залишає ваш Mac</li><li>Кроки встановлення — у нотатці «Початок роботи»</li></ul>" }
+    }
+  };
+  var curDoc = null;
+  function openDoc(key) { curDoc = key; var d = DOCS[lang][key]; $("docWinTitle").textContent = d.title; $("docContent").innerHTML = d.html; openWin($("docWin"), $("docBackdrop")); }
+  stack.addEventListener("click", function (e) { var c = e.target.closest(".card"); if (!c) return; e.stopPropagation(); toggleStack(false); openDoc(c.getAttribute("data-doc")); });
+  $("docBackdrop").addEventListener("click", function () { closeWin($("docWin"), $("docBackdrop")); curDoc = null; });
+
+  $("dockGithub").addEventListener("click", function () { window.open("https://github.com/dmirtyisme/mick-jigger", "_blank", "noopener"); });
+
+  // Close buttons (traffic-light red)
+  document.querySelectorAll("[data-close]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var which = b.getAttribute("data-close");
+      if (which === "notes") { closeWin($("notesWin"), $("notesBackdrop")); $("dockNotes").classList.remove("running"); }
+      if (which === "doc") { closeWin($("docWin"), $("docBackdrop")); }
+      if (which === "activity") { closeWin($("activityWin"), $("activityBackdrop")); }
+    });
   });
 
-  var statSession = document.getElementById("statSession");
-  var statJiggles = document.getElementById("statJiggles");
-  var statDistance = document.getElementById("statDistance");
-  var sessionStart = Date.now();
+  /* ============================================================
+     ACTIVITY WINDOW (§5.3)
+     ============================================================ */
+  var activityOpen = false, curTab = "today", tracking = false, trackStart = null, permGranted = false;
+  function openActivity() { activityOpen = true; openWin($("activityWin"), $("activityBackdrop")); renderActive(); }
+  $("activityBackdrop").addEventListener("click", function () { closeWin($("activityWin"), $("activityBackdrop")); activityOpen = false; });
 
-  setInterval(function () {
-    var s = Math.floor((Date.now() - sessionStart) / 1000);
-    var m = Math.floor(s / 60);
-    statSession.textContent = m + ":" + String(s % 60).padStart(2, "0");
-  }, 1000);
-
-  /* ================= Folder stack ================= */
-  var stack = document.getElementById("stack");
-  var dockFolder = document.getElementById("dockFolder");
-
-  function toggleStack(force) {
-    var open = force !== undefined ? force : !stack.classList.contains("open");
-    stack.classList.toggle("open", open);
-    dockFolder.classList.toggle("running", open);
-  }
-  dockFolder.addEventListener("click", function (e) { e.stopPropagation(); toggleStack(); });
-
-  /* ================= Doc modal ================= */
-  var docWindow = document.getElementById("docWindow");
-  var modalBackdrop = document.getElementById("modalBackdrop");
-  var docTitle = document.getElementById("docTitle");
-  var docContent = document.getElementById("docContent");
-  var dockNotes = document.getElementById("dockNotes");
-
-  function renderDoc(key) {
-    var doc = DOCS[lang][key];
-    docTitle.textContent = doc.title;
-    docContent.innerHTML = doc.html;
-  }
-  function openDoc(key) {
-    currentDoc = key;
-    renderDoc(key);
-    docWindow.classList.add("open");
-    modalBackdrop.classList.add("open");
-    dockNotes.classList.toggle("running", key === "readme");
-  }
-  function closeDoc() {
-    currentDoc = null;
-    docWindow.classList.remove("open");
-    modalBackdrop.classList.remove("open");
-    dockNotes.classList.remove("running");
-  }
-  dockNotes.addEventListener("click", function (e) { e.stopPropagation(); openDoc("readme"); });
-  document.getElementById("docClose").addEventListener("click", closeDoc);
-  modalBackdrop.addEventListener("click", closeDoc);
-
-  stack.addEventListener("click", function (e) {
-    var card = e.target.closest(".card");
-    if (!card) return;
-    e.stopPropagation();
-    toggleStack(false);
-    openDoc(card.getAttribute("data-doc"));
+  $("activityTabs").addEventListener("click", function (e) {
+    var b = e.target.closest("button"); if (!b) return;
+    curTab = b.getAttribute("data-tab");
+    $("activityTabs").querySelectorAll("button").forEach(function (x) { x.classList.toggle("sel", x === b); });
+    document.querySelectorAll(".tab-pane").forEach(function (p) { p.classList.add("hidden"); });
+    $("pane-" + curTab).classList.remove("hidden");
+    renderActive();
   });
 
-  /* ================= Dock: GitHub ================= */
-  document.getElementById("dockGithub").addEventListener("click", function () {
-    window.open("https://github.com/dmirtyisme/mick-jigger", "_blank", "noopener");
+  $("enableTrackingBtn").addEventListener("click", function () {
+    // Demo pattern (§0 item 5): visually "enables" tracking, shows demo note, no real permission
+    permGranted = true; tracking = true; trackStart = new Date();
+    $("permBanner").classList.add("hidden"); showDemo($("enableTrackingBtn")); renderStatusRow();
   });
+  $("openSettingsBtn").addEventListener("click", function () { showDemo($("openSettingsBtn")); });
 
-  /* ================= Outside clicks & keyboard ================= */
+  function renderStatusRow() {
+    var row = $("statusRow"), txt = $("statusText");
+    if (tracking && trackStart) { row.classList.remove("paused"); txt.textContent = t("trackingStarted").replace("{t}", trackStart.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })); }
+    else { row.classList.add("paused"); txt.textContent = t("trackingPaused"); }
+  }
+
+  function fmtMin(min) { var h = Math.floor(min / 60), m = Math.round(min % 60); return h > 0 ? h + "h " + m + "m" : m + "m"; }
+  function metricCard(k, v) { return '<div class="metric-card"><div class="mv">' + v + '</div><div class="mk">' + t(k) + '</div></div>'; }
+
+  function renderMetricGrid(a) {
+    return '<div class="metric-grid">' +
+      metricCard("mActivityScore", activityScore({ activeMinutes: a.activeMinutes / a.days.length, clicks: a.clicks / a.days.length, distanceMeters: a.distanceMeters / a.days.length, scrolls: a.scrolls / a.days.length })) +
+      metricCard("mActiveTime", fmtMin(a.activeMinutes)) +
+      metricCard("mClicks", Math.round(a.clicks).toLocaleString(locale())) +
+      metricCard("mDoubleClicks", Math.round(a.doubleClicks).toLocaleString(locale())) +
+      metricCard("mScrolls", Math.round(a.scrolls).toLocaleString(locale())) +
+      metricCard("mDistance", a.distanceMeters.toFixed(1) + " m") +
+      metricCard("mIdleTime", fmtMin(a.idleMinutes)) +
+      metricCard("mLongest", fmtMin(a.longestSessionMin)) +
+      metricCard("mAvgSpeed", a.avgSpeed + " px/s") +
+      metricCard("mMaxSpeed", a.maxSpeed + " px/s") +
+    '</div>';
+  }
+  function renderTimeline(timeline) {
+    var bars = timeline.map(function (v) { return '<div class="bar ' + (v ? "active" : "") + '" style="height:' + (v ? 40 + Math.random() * 24 : 6) + '%"></div>'; }).join("");
+    // Note: bar heights are decorative jitter; active/idle state is the seeded value.
+    return '<div class="sec-head">' + t("secTimeline") + '</div><div class="timeline">' + bars + '</div>' +
+      '<div class="timeline-axis"><span>0</span><span>6</span><span>12</span><span>18</span><span>24</span></div>';
+  }
+  function cmpRow(label, real, synth) {
+    var total = real + synth || 1, rp = real / total * 100;
+    return '<div class="cmp-bar-row"><div class="cbl"><span>' + label + '</span><span>' + Math.round(real).toLocaleString(locale()) + ' ' + t("real") + ' · ' + Math.round(synth).toLocaleString(locale()) + ' ' + t("synthetic") + '</span></div><div class="cmp-track"><div class="real" style="width:' + rp + '%"></div><div class="synth" style="width:' + (100 - rp) + '%"></div></div></div>';
+  }
+  function renderRealSynth(a) {
+    return '<div class="sec-head">' + t("secRealSynth") + '</div>' +
+      cmpRow(t("cmpClicks"), a.realClicks, a.synthClicks) +
+      cmpRow(t("cmpScrolls"), a.realScrolls, a.synthScrolls) +
+      cmpRow(t("cmpDistance"), a.realDist, a.synthDist);
+  }
+  function renderInsights(days) {
+    var today = days[0].m, yest = days[1] ? days[1].m : today;
+    var pct = Math.round((today.distanceMeters - yest.distanceMeters) / yest.distanceMeters * 100);
+    var mostActive = today.timeline.reduce(function (best, v, i) { return v ? i : best; }, 0);
+    return '<div class="sec-head">' + t("secInsights") + '</div><table class="insights">' +
+      '<tr><td>' + t("insDistanceToday") + '</td><td>' + today.distanceMeters.toFixed(1) + ' m</td></tr>' +
+      '<tr><td>' + t("insVsYesterday") + '</td><td>' + (pct >= 0 ? "+" : "") + pct + '%</td></tr>' +
+      '<tr><td>' + t("insMostActive") + '</td><td>' + mostActive + ':00</td></tr>' +
+      '<tr><td>' + t("insLongest") + '</td><td>' + fmtMin(today.longestSessionMin) + '</td></tr>' +
+    '</table>';
+  }
+  function renderByDay(days) {
+    var maxD = Math.max.apply(null, days.map(function (x) { return x.m.distanceMeters; }));
+    var rows = days.map(function (x) {
+      var w = x.m.distanceMeters / maxD * 100;
+      return '<div class="byday-row"><span class="bd-day">' + x.date.toLocaleDateString(locale(), { weekday: "short", day: "numeric" }) + '</span><span class="bd-track"><span class="bd-fill" style="width:' + w + '%"></span></span><span class="bd-val">' + x.m.distanceMeters.toFixed(0) + ' m</span></div>';
+    }).join("");
+    return '<div class="sec-head">' + t("secByDay") + '</div><div class="byday">' + rows + '</div>';
+  }
+
+  // All-Time persistence (§0 item 8) — accumulate live distance into localStorage
+  var AT_KEY = "mj-alltime";
+  function readAllTime() { try { return JSON.parse(localStorage.getItem(AT_KEY)) || { meters: 0, clicks: 0 }; } catch (e) { return { meters: 0, clicks: 0 }; } }
+  function writeAllTime(o) { try { localStorage.setItem(AT_KEY, JSON.stringify(o)); } catch (e) {} }
+
+  function renderActive() {
+    if (!activityOpen) return;
+    renderStatusRow();
+    $("permBanner").classList.toggle("hidden", permGranted);
+    if (curTab === "today") {
+      var a = aggregate(lastNDays(1), true);
+      $("pane-today").innerHTML = renderMetricGrid(a) + renderTimeline(genDay(dateStr(new Date())).timeline) + renderRealSynth(a) + renderInsights(lastNDays(2));
+    } else if (curTab === "week") {
+      var days = lastNDays(7), aw = aggregate(days, true);
+      $("pane-week").innerHTML = renderMetricGrid(aw) + renderByDay(days);
+    } else if (curTab === "month") {
+      var dm = lastNDays(30), am = aggregate(dm, true);
+      $("pane-month").innerHTML = renderMetricGrid(am) + renderByDay(dm.slice(0, 10));
+    } else if (curTab === "all") {
+      // All Time = 90 seeded days + persisted live accumulation
+      var da = lastNDays(90), aa = aggregate(da, false), at = readAllTime();
+      aa.distanceMeters = Math.round((aa.distanceMeters + at.meters + liveMeters()) * 10) / 10;
+      aa.clicks += at.clicks + live.clicks;
+      $("pane-all").innerHTML = renderMetricGrid(aa) + '<div class="persist-note">' + t("persistNote") + '</div>';
+    } else if (curTab === "trail") {
+      renderTrailReplay();
+    }
+  }
+
+  /* --- Trail tab (§5.3) --- */
+  var replay = $("trailReplay"), rctx = replay.getContext("2d");
+  function renderTrailReplay() {
+    var rdpr = Math.min(window.devicePixelRatio || 1, 2);
+    replay.width = replay.clientWidth * rdpr; replay.height = replay.clientHeight * rdpr;
+    rctx.setTransform(rdpr, 0, 0, rdpr, 0, 0);
+    rctx.clearRect(0, 0, replay.clientWidth, replay.clientHeight);
+    rctx.lineCap = "round"; rctx.lineJoin = "round";
+    var W = replay.clientWidth, H = replay.clientHeight;
+    if (trailPoints.length > 1) {
+      rctx.strokeStyle = trailColor(0.8); rctx.lineWidth = 2; rctx.beginPath();
+      var p0 = trailPoints[0]; rctx.moveTo(p0.x * W, p0.y * H);
+      for (var i = 1; i < trailPoints.length; i++) { var p = trailPoints[i - 1], q = trailPoints[i]; var mx = (p.x + q.x) / 2 * W, my = (p.y + q.y) / 2 * H; rctx.quadraticCurveTo(p.x * W, p.y * H, mx, my); }
+      rctx.stroke();
+    } else {
+      rctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--color-text-tertiary");
+      rctx.font = "13px -apple-system, sans-serif"; rctx.textAlign = "center";
+      rctx.fillText(lang === "ua" ? "Рухайте курсор, щоб намалювати слід" : "Move the cursor to draw a trail", W / 2, H / 2);
+    }
+    $("trailCaption").textContent = t("samples").replace("{n}", trailPoints.length.toLocaleString(locale()));
+    $("trailDetails").innerHTML = '<table class="insights">' +
+      '<tr><td>' + t("mDistance") + '</td><td>' + liveMeters().toFixed(1) + ' m</td></tr>' +
+      '<tr><td>' + t("samples").replace("{n} ", "").replace(" · real cursor movement only · resets at midnight", "").replace(" · лише реальний рух курсора · скидається опівночі", "") + '</td><td>' + trailPoints.length + '</td></tr>' +
+      '<tr><td>' + t("mMaxSpeed") + '</td><td>' + live.maxSpeed + ' px/s</td></tr>' +
+    '</table>';
+  }
+  $("trailDetailsToggle").addEventListener("change", function () { $("trailDetails").classList.toggle("open", this.checked); });
+  // Save as PNG — real toDataURL download (§0 item 7)
+  $("savePngBtn").addEventListener("click", function () {
+    renderTrailReplay();
+    var url = replay.toDataURL("image/png");
+    var a = document.createElement("a"); a.href = url; a.download = "mick-jigger-trail.png"; document.body.appendChild(a); a.click(); a.remove();
+  });
+  // Share — navigator.share with graceful fallback (§0 item 7)
+  $("shareBtn").addEventListener("click", function () {
+    var shareData = { title: "Mick Jigger", text: "My cursor trail on mickjigger.app", url: "https://mickjigger.app" };
+    if (navigator.share) { navigator.share(shareData).catch(function () {}); }
+    else if (navigator.clipboard) { navigator.clipboard.writeText(shareData.url).then(function () { showDemoText($("shareBtn"), t("copied")); }); }
+    else { showDemoText($("shareBtn"), shareData.url); }
+  });
+  function showDemoText(el, text) { toast.textContent = text; var r = el.getBoundingClientRect(); toast.style.opacity = "1"; toast.style.left = Math.min(Math.max(r.left, 8), innerWidth - toast.offsetWidth - 8) + "px"; toast.style.top = (r.top - toast.offsetHeight - 8) + "px"; clearTimeout(toastTimer); toastTimer = setTimeout(function () { toast.style.opacity = "0"; }, 1800); }
+
+  // Persist live distance into All-Time on unload (§0 item 8)
+  window.addEventListener("beforeunload", function () { var at = readAllTime(); at.meters = Math.round((at.meters + liveMeters()) * 10) / 10; at.clicks += live.clicks; writeAllTime(at); });
+
+  // Activity window draggable by titlebar (§5.3)
+  (function () {
+    var win = $("activityWin"), bar = $("activityTitlebar"), d = null;
+    bar.addEventListener("mousedown", function (e) {
+      if (e.target.closest(".traffic")) return;
+      var r = win.getBoundingClientRect();
+      win.style.transform = "none"; win.style.left = r.left + "px"; win.style.top = r.top + "px";
+      d = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+      e.preventDefault();
+    });
+    document.addEventListener("mousemove", function (e) { if (!d) return; win.style.left = Math.min(Math.max(e.clientX - d.dx, 0), innerWidth - win.offsetWidth) + "px"; win.style.top = Math.min(Math.max(e.clientY - d.dy, 0), innerHeight - 40) + "px"; });
+    document.addEventListener("mouseup", function () { d = null; });
+  })();
+
+  /* ============================================================
+     GLOBAL: outside click + keyboard (§2.7 keyboard nav)
+     ============================================================ */
   document.addEventListener("click", function (e) {
     if (!popover.contains(e.target)) togglePopover(false);
-    if (!langMenu.contains(e.target) && e.target !== langBtn) toggleLangMenu(false);
+    if (!$("langMenu").contains(e.target) && e.target !== $("langBtn") && !$("langBtn").contains(e.target)) toggleLangMenu(false);
     if (!stack.contains(e.target)) toggleStack(false);
   });
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape") {
-      togglePopover(false);
-      toggleLangMenu(false);
-      toggleStack(false);
-      closeDoc();
+      togglePopover(false); toggleLangMenu(false); toggleStack(false);
+      closeWin($("notesWin"), $("notesBackdrop")); closeWin($("docWin"), $("docBackdrop"));
+      closeWin($("activityWin"), $("activityBackdrop")); activityOpen = false;
     }
     armIdle();
   });
 
+  /* Language dropdown */
+  function toggleLangMenu(force) { var open = force !== undefined ? force : !$("langMenu").classList.contains("open"); $("langMenu").classList.toggle("open", open); $("langBtn").setAttribute("aria-expanded", open ? "true" : "false"); }
+  $("langBtn").addEventListener("click", function (e) { e.stopPropagation(); toggleLangMenu(); });
+  $("langMenu").addEventListener("click", function (e) { var b = e.target.closest("button[data-lang]"); if (!b) return; e.stopPropagation(); lang = b.getAttribute("data-lang"); applyLang(); toggleLangMenu(false); });
+
+  /* ============================================================
+     BOOT SEQUENCE (§4) — reduced-motion aware (§2.7)
+     ============================================================ */
+  function reveal() { $("menubar").classList.add("in"); $("dockWrap").classList.add("in"); $("boot").classList.add("done"); setTimeout(function () { var b = $("boot"); if (b && b.parentNode) b.parentNode.removeChild(b); }, 400); }
+  if (reduceMotion) {
+    // No bounce/slide; show final state immediately.
+    reveal(); armIdle(); refreshPopover();
+  } else {
+    // 1) black screen; 2) icon bounces (~1.2s via 3×0.4s); 3) menu bar in; 4) dock in; 5) canvas already visible under boot.
+    setTimeout(function () { $("menubar").classList.add("in"); }, 1200);
+    setTimeout(function () { $("dockWrap").classList.add("in"); $("boot").classList.add("done"); }, 1550);
+    setTimeout(function () { var b = $("boot"); if (b && b.parentNode) b.parentNode.removeChild(b); armIdle(); }, 2000);
+    refreshPopover();
+  }
+
   applyLang();
+  refreshPopover();
 })();
 </script>
 </body>
