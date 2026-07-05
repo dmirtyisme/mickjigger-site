@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mick Jigger — Your cursor has a story</title>
+<meta name="description" content="Mick Jigger keeps your Mac awake. Move your mouse. Watch it unfold.">
+<style>
+  :root {
+    --bg: #07080A;
+    --blue: #2B5BFF;
+    --blue-soft: rgba(43, 91, 255, 0.14);
+    --white: #F2F2F2;
+    --gray: rgba(255, 255, 255, 0.45);
+    --gray-dim: rgba(255, 255, 255, 0.28);
+    --glass: rgba(20, 20, 22, 0.85);
+    --border: rgba(255, 255, 255, 0.08);
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    font-family: var(--font);
+    color: var(--white);
+    -webkit-font-smoothing: antialiased;
+    cursor: none;
+  }
+
+  a, button { cursor: none; }
+
+  /* ---------- Ambient background ---------- */
+  .ambient {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    background:
+      radial-gradient(1200px 700px at 50% 120%, rgba(43, 91, 255, 0.10), transparent 60%),
+      radial-gradient(900px 500px at 80% -10%, rgba(43, 91, 255, 0.05), transparent 55%),
+      var(--bg);
+    pointer-events: none;
+  }
+
+  /* ---------- Trail canvas ---------- */
+  #trail {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    display: block;
+  }
+
+  /* ---------- Custom cursor ---------- */
+  #cursor {
+    position: fixed;
+    left: 0; top: 0;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--blue);
+    box-shadow: 0 0 12px rgba(43, 91, 255, 0.9), 0 0 32px rgba(43, 91, 255, 0.35);
+    z-index: 1000;
+    pointer-events: none;
+    transform: translate(-100px, -100px);
+    transition: width .15s ease, height .15s ease, margin .15s ease, opacity .3s ease;
+    opacity: 0;
+  }
+  #cursor.on { opacity: 1; }
+  #cursor.hover {
+    width: 20px; height: 20px;
+    margin: -6px 0 0 -6px;
+    background: rgba(43, 91, 255, 0.35);
+    box-shadow: 0 0 16px rgba(43, 91, 255, 0.6);
+  }
+
+  /* ---------- Menu bar ---------- */
+  .menubar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 28px;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 12px;
+    background: rgba(15, 15, 17, 0.72);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    user-select: none;
+  }
+  .menubar .left, .menubar .right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .mb-item {
+    padding: 3px 9px;
+    border-radius: 5px;
+    color: rgba(255, 255, 255, 0.85);
+    transition: background .12s ease;
+    white-space: nowrap;
+  }
+  .mb-item:hover { background: rgba(255, 255, 255, 0.09); }
+  .mb-item.app-name { font-weight: 700; }
+  .mb-apple svg { width: 13px; height: 15px; display: block; fill: rgba(255,255,255,0.9); }
+  .mb-icon { display: flex; align-items: center; }
+  .mb-icon svg { width: 16px; height: 16px; fill: rgba(255,255,255,0.75); display: block; }
+
+  /* MJ menu bar icon */
+  #mjMenuIcon {
+    display: flex; align-items: center; justify-content: center;
+    width: 26px; height: 20px;
+    border-radius: 5px;
+    transition: background .12s ease;
+  }
+  #mjMenuIcon:hover, #mjMenuIcon.open { background: rgba(255,255,255,0.12); }
+  #mjMenuIcon .mj-glyph {
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: italic;
+    font-weight: 700;
+    font-size: 12px;
+    color: var(--blue);
+    letter-spacing: -0.5px;
+    text-shadow: 0 0 10px rgba(43, 91, 255, 0.55);
+  }
+
+  /* Language toggle */
+  .lang-toggle {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    overflow: hidden;
+    margin-right: 4px;
+  }
+  .lang-toggle button {
+    border: 0;
+    background: transparent;
+    color: var(--gray);
+    font-family: var(--font);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    transition: color .15s ease, background .15s ease;
+  }
+  .lang-toggle button.active {
+    color: var(--white);
+    background: rgba(43, 91, 255, 0.85);
+  }
+
+  #clock { font-variant-numeric: tabular-nums; color: rgba(255,255,255,0.85); }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    position: fixed;
+    inset: 0;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 28px 24px 120px;
+    pointer-events: none;
+  }
+  .app-icon {
+    width: 96px; height: 96px;
+    border-radius: 24px;
+    background: linear-gradient(160deg, #4C77FF 0%, var(--blue) 45%, #1B3FC4 100%);
+    box-shadow:
+      0 20px 50px rgba(43, 91, 255, 0.35),
+      inset 0 1px 0 rgba(255, 255, 255, 0.35),
+      inset 0 -8px 20px rgba(0, 0, 30, 0.35);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 34px;
+    animation: iconIn 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .app-icon span {
+    font-family: Georgia, "Times New Roman", serif;
+    font-style: italic;
+    font-weight: 700;
+    font-size: 44px;
+    color: #fff;
+    letter-spacing: -2px;
+    text-shadow: 0 2px 12px rgba(0, 0, 40, 0.4);
+    transform: translateX(-2px);
+  }
+  @keyframes iconIn {
+    from { opacity: 0; transform: translateY(18px) scale(0.92); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  .eyebrow {
+    color: var(--blue);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    margin-bottom: 18px;
+    animation: riseIn 0.8s 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  h1 {
+    font-size: clamp(40px, 7vw, 88px);
+    font-weight: 700;
+    letter-spacing: -0.04em;
+    line-height: 1.02;
+    animation: riseIn 0.8s 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  h1 em {
+    font-style: italic;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.55);
+  }
+  .subtitle {
+    margin-top: 22px;
+    font-size: 16px;
+    color: var(--gray);
+    animation: riseIn 0.8s 0.38s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .cta-row {
+    display: flex;
+    gap: 14px;
+    margin-top: 38px;
+    pointer-events: auto;
+    animation: riseIn 0.8s 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font);
+    font-size: 15px;
+    font-weight: 600;
+    padding: 13px 28px;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: transform .18s cubic-bezier(0.22, 1, 0.36, 1), box-shadow .18s ease, background .18s ease, border-color .18s ease;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary {
+    background: var(--blue);
+    color: #fff;
+    box-shadow: 0 8px 28px rgba(43, 91, 255, 0.4);
+  }
+  .btn-primary:hover {
+    background: #3E6BFF;
+    transform: translateY(-2px);
+    box-shadow: 0 14px 36px rgba(43, 91, 255, 0.5);
+  }
+  .btn-ghost {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--white);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+  }
+  .btn-ghost:hover {
+    background: rgba(255, 255, 255, 0.09);
+    border-color: rgba(255, 255, 255, 0.28);
+    transform: translateY(-2px);
+  }
+  .btn svg { width: 16px; height: 16px; fill: currentColor; }
+
+  /* ---------- Score HUD ---------- */
+  .hud {
+    position: fixed;
+    right: 22px;
+    bottom: 110px;
+    z-index: 40;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 20px;
+    min-width: 148px;
+    text-align: right;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity .5s ease, transform .5s cubic-bezier(0.22, 1, 0.36, 1);
+    pointer-events: none;
+  }
+  .hud.visible { opacity: 1; transform: translateY(0); }
+  .hud-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--blue);
+  }
+  .hud-score {
+    font-size: 32px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    font-variant-numeric: tabular-nums;
+  }
+  .hud-meters {
+    font-size: 12px;
+    color: var(--gray);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- Dock ---------- */
+  .dock-wrap {
+    position: fixed;
+    bottom: 12px;
+    left: 0; right: 0;
+    z-index: 60;
+    display: flex;
+    justify-content: center;
+    pointer-events: none;
+  }
+  .dock {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    padding: 9px 12px;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 22px;
+    pointer-events: auto;
+  }
+  .dock-item {
+    width: 52px; height: 52px;
+    border-radius: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 30px;
+    transform-origin: bottom center;
+    transition: transform .08s linear;
+    position: relative;
+    border: 0;
+    background: transparent;
+    padding: 0;
+  }
+  .dock-item .tile {
+    width: 100%; height: 100%;
+    border-radius: 13px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+  }
+  .dock-item .tile.finder { background: linear-gradient(180deg, #8EC8FF 0%, #2C7BE5 100%); }
+  .dock-item .tile.mj {
+    background: linear-gradient(160deg, #4C77FF 0%, var(--blue) 50%, #1B3FC4 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
+  }
+  .dock-item .tile.mj span {
+    font-family: Georgia, serif;
+    font-style: italic;
+    font-weight: 700;
+    font-size: 22px;
+    color: #fff;
+    letter-spacing: -1px;
+  }
+  .dock-item .tile.notes { background: linear-gradient(180deg, #FDFBF3 0%, #F5EFD8 100%); font-size: 26px; }
+  .dock-item .tile.github { background: #16181C; border: 1px solid rgba(255,255,255,0.1); }
+  .dock-item .tile.github svg { width: 30px; height: 30px; fill: #F2F2F2; }
+  .dock-item .tile svg.finder-face { width: 40px; height: 40px; }
+
+  .dock-item::after {
+    content: "";
+    position: absolute;
+    bottom: -7px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px; height: 4px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.55);
+    opacity: 0;
+    transition: opacity .2s ease;
+  }
+  .dock-item.running::after { opacity: 1; }
+
+  .dock-item .label {
+    position: absolute;
+    bottom: calc(100% + 12px);
+    left: 50%;
+    transform: translateX(-50%) translateY(4px);
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    color: rgba(255,255,255,0.9);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: 7px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  .dock-item:hover .label { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  /* ---------- Popover ---------- */
+  .popover {
+    position: fixed;
+    top: 34px;
+    right: 10px;
+    z-index: 80;
+    width: 300px;
+    background: var(--glass);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+    padding: 16px;
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+    transform-origin: top right;
+    pointer-events: none;
+    transition: opacity .2s ease, transform .2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .popover.open {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    pointer-events: auto;
+  }
+  .popover::before {
+    content: "";
+    position: absolute;
+    top: -5px;
+    right: 22px;
+    width: 10px; height: 10px;
+    background: var(--glass);
+    border-left: 1px solid var(--border);
+    border-top: 1px solid var(--border);
+    transform: rotate(45deg);
+  }
+  .pop-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+  .pop-head .title { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; }
+  .badge {
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: 0.12em;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border: 1px solid rgba(43, 91, 255, 0.35);
+    border-radius: 5px;
+    padding: 2px 6px;
+  }
+  .pop-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    margin-bottom: 10px;
+  }
+  .status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .status-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    transition: background .25s ease, box-shadow .25s ease;
+  }
+  .status-dot.on {
+    background: #30D158;
+    box-shadow: 0 0 10px rgba(48, 209, 88, 0.7);
+  }
+
+  /* macOS toggle switch */
+  .switch {
+    position: relative;
+    width: 42px; height: 25px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16);
+    border: 0;
+    padding: 0;
+    transition: background .25s ease;
+  }
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 2px; left: 2px;
+    width: 21px; height: 21px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+    transition: transform .25s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .switch.on { background: #30D158; }
+  .switch.on::after { transform: translateX(17px); }
+
+  .pop-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--gray-dim);
+    margin: 12px 2px 7px;
+  }
+  .segmented {
+    display: flex;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    padding: 2px;
+    gap: 2px;
+  }
+  .segmented button {
+    flex: 1;
+    border: 0;
+    background: transparent;
+    color: var(--gray);
+    font-family: var(--font);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 0;
+    border-radius: 7px;
+    transition: background .15s ease, color .15s ease;
+  }
+  .segmented button.active {
+    background: var(--blue);
+    color: #fff;
+    box-shadow: 0 2px 10px rgba(43, 91, 255, 0.4);
+  }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .stat {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 9px 6px;
+    text-align: center;
+  }
+  .stat .v {
+    font-size: 15px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+  .stat .k {
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-dim);
+    margin-top: 2px;
+  }
+  .pop-foot {
+    margin-top: 13px;
+    font-size: 11px;
+    line-height: 1.45;
+    color: var(--gray-dim);
+    text-align: center;
+  }
+
+  /* ---------- Idle overlay ---------- */
+  .idle {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    background: rgba(5, 6, 8, 0.62);
+    backdrop-filter: blur(26px);
+    -webkit-backdrop-filter: blur(26px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .6s ease;
+    padding: 24px;
+  }
+  .idle.show { opacity: 1; }
+  .idle h2 {
+    font-size: clamp(30px, 4.6vw, 54px);
+    font-weight: 700;
+    letter-spacing: -0.035em;
+    line-height: 1.1;
+  }
+  .idle h2 .blue { color: var(--blue); }
+  .idle p {
+    margin-top: 16px;
+    font-size: 16px;
+    color: var(--gray);
+  }
+  .synthetic {
+    position: relative;
+    width: 220px;
+    height: 110px;
+    margin-top: 46px;
+  }
+  .synthetic .dot {
+    position: absolute;
+    top: 0; left: 0;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--blue);
+    box-shadow: 0 0 14px rgba(43, 91, 255, 0.95), 0 0 40px rgba(43, 91, 255, 0.4);
+    animation: jiggle 4.5s ease-in-out infinite;
+  }
+  .synthetic .dot::after {
+    content: "";
+    position: absolute;
+    inset: -14px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(43, 91, 255, 0.35) 0%, transparent 70%);
+  }
+  .synthetic .path-hint {
+    position: absolute;
+    inset: 0;
+    border: 1px dashed rgba(43, 91, 255, 0.18);
+    border-radius: 60px;
+  }
+  @keyframes jiggle {
+    0%   { transform: translate(14px, 76px); }
+    18%  { transform: translate(150px, 18px); }
+    36%  { transform: translate(196px, 68px); }
+    55%  { transform: translate(96px, 92px); }
+    74%  { transform: translate(46px, 12px); }
+    100% { transform: translate(14px, 76px); }
+  }
+
+  /* ---------- Notes modal ---------- */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 150;
+    background: rgba(0, 0, 0, 0.4);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+  .modal-backdrop.open { opacity: 1; pointer-events: auto; }
+  .notes-window {
+    position: fixed;
+    top: 50%; left: 50%;
+    z-index: 160;
+    width: min(460px, calc(100vw - 40px));
+    background: rgba(28, 28, 30, 0.96);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 40px 100px rgba(0, 0, 0, 0.7);
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.96);
+    pointer-events: none;
+    transition: opacity .25s ease, transform .25s cubic-bezier(0.22, 1, 0.36, 1);
+    overflow: hidden;
+  }
+  .notes-window.open {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+    pointer-events: auto;
+  }
+  .notes-titlebar {
+    display: flex;
+    align-items: center;
+    height: 40px;
+    padding: 0 14px;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid var(--border);
+    position: relative;
+  }
+  .traffic { display: flex; gap: 8px; }
+  .traffic button {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    border: 0;
+    padding: 0;
+    transition: filter .15s ease;
+  }
+  .traffic button:hover { filter: brightness(1.25); }
+  .traffic .red { background: #FF5F57; }
+  .traffic .yellow { background: #FEBC2E; }
+  .traffic .green { background: #28C840; }
+  .notes-title {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 13px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.75);
+    white-space: nowrap;
+  }
+  .notes-body { padding: 22px 26px 24px; }
+  .notes-body ol {
+    list-style: none;
+    counter-reset: step;
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+  }
+  .notes-body li {
+    counter-increment: step;
+    position: relative;
+    padding-left: 35px;
+    font-size: 14px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.82);
+  }
+  .notes-body li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border: 1px solid rgba(43, 91, 255, 0.35);
+    border-radius: 50%;
+  }
+  .notes-body li strong { color: var(--white); font-weight: 600; }
+  .notes-version {
+    margin-top: 20px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--gray-dim);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  /* ---------- Responsive ---------- */
+  @media (max-width: 640px) {
+    .menubar .mb-menus { display: none; }
+    .hud { right: 14px; bottom: 96px; padding: 11px 16px; min-width: 120px; }
+    .hud-score { font-size: 24px; }
+    .dock-item { width: 44px; height: 44px; }
+    .cta-row { flex-direction: column; align-items: center; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ambient"></div>
+<canvas id="trail"></canvas>
+<div id="cursor"></div>
+
+<!-- ============ Menu bar ============ -->
+<header class="menubar">
+  <div class="left">
+    <div class="mb-item mb-apple" aria-hidden="true">
+      <svg viewBox="0 0 814 1000"><path d="M788 341c-6 4-107 61-107 187 0 146 128 198 132 199-1 3-20 71-67 141-42 61-86 122-153 122s-84-39-161-39c-75 0-102 40-163 40s-104-57-153-127C60 782 14 660 14 544c0-186 121-285 240-285 63 0 116 42 156 42 38 0 97-44 169-44 27 0 125 2 209 84zM554 172c30-36 51-85 51-135 0-7-1-14-2-19-49 2-107 33-142 73-27 31-53 80-53 130 0 8 1 15 2 18 3 1 8 1 13 1 44 0 99-29 131-68z"/></svg>
+    </div>
+    <div class="mb-item app-name">Finder</div>
+    <div class="mb-menus" style="display:flex;gap:4px;">
+      <div class="mb-item" data-i18n="menuFile">File</div>
+      <div class="mb-item" data-i18n="menuEdit">Edit</div>
+      <div class="mb-item" data-i18n="menuView">View</div>
+    </div>
+  </div>
+  <div class="right">
+    <div class="lang-toggle" role="group" aria-label="Language">
+      <button id="langEn" class="active">EN</button>
+      <button id="langUa">UA</button>
+    </div>
+    <button id="mjMenuIcon" class="mb-item" aria-label="Mick Jigger" style="border:0;background:transparent;">
+      <span class="mj-glyph">MJ</span>
+    </button>
+    <div class="mb-item mb-icon" aria-hidden="true">
+      <svg viewBox="0 0 16 16"><path d="M8 12.5a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5zM8 9c-1.3 0-2.5.5-3.4 1.3a.6.6 0 0 0 0 .9l.7.7c.2.2.6.3.8 0A2.9 2.9 0 0 1 8 11.2c.7 0 1.4.3 1.9.7.2.3.6.2.8 0l.7-.7a.6.6 0 0 0 0-.9A5.2 5.2 0 0 0 8 9zm0-3.5c-2.2 0-4.3.9-5.8 2.3a.6.6 0 0 0 0 .9l.7.7c.2.2.6.2.8 0A6.5 6.5 0 0 1 8 7.8c1.7 0 3.2.6 4.3 1.6.2.2.6.2.8 0l.7-.7a.6.6 0 0 0 0-.9A8.3 8.3 0 0 0 8 5.5zM8 2C4.9 2 2 3.2 0 5.2a.6.6 0 0 0 0 .9l.7.7c.2.2.6.2.8 0A9.7 9.7 0 0 1 8 4.3c2.5 0 4.8 1 6.5 2.5.2.2.6.2.8 0l.7-.7a.6.6 0 0 0 0-.9C14 3.2 11.1 2 8 2z"/></svg>
+    </div>
+    <div class="mb-item mb-icon" aria-hidden="true">
+      <svg viewBox="0 0 28 14"><rect x="0.5" y="0.5" width="23" height="13" rx="3.5" fill="none" stroke="rgba(255,255,255,0.5)"/><rect x="2.5" y="2.5" width="16" height="9" rx="1.5"/><path d="M25.5 4.5v5c1.2-.3 2-1.3 2-2.5s-.8-2.2-2-2.5z"/></svg>
+    </div>
+    <div class="mb-item" id="clock">—</div>
+  </div>
+</header>
+
+<!-- ============ Hero ============ -->
+<main class="hero">
+  <div class="app-icon"><span>MJ</span></div>
+  <div class="eyebrow" data-i18n="eyebrow">Mick Jigger for macOS</div>
+  <h1 id="heroTitle">Your cursor<br>has <em>a story</em></h1>
+  <p class="subtitle" data-i18n="subtitle">Move your mouse. Watch it unfold.</p>
+  <div class="cta-row">
+    <a class="btn btn-primary" href="https://github.com/dmirtyisme/mick-jigger/releases/latest" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16"><path d="M8 1a.75.75 0 0 1 .75.75v6.69l2.22-2.22a.75.75 0 1 1 1.06 1.06l-3.5 3.5a.75.75 0 0 1-1.06 0l-3.5-3.5a.75.75 0 0 1 1.06-1.06l2.22 2.22V1.75A.75.75 0 0 1 8 1zM2 12.25a.75.75 0 0 1 .75.75v.5c0 .14.11.25.25.25h10a.25.25 0 0 0 .25-.25v-.5a.75.75 0 0 1 1.5 0v.5A1.75 1.75 0 0 1 13 15.25H3a1.75 1.75 0 0 1-1.75-1.75v-.5A.75.75 0 0 1 2 12.25z"/></svg>
+      <span data-i18n="ctaDownload">Download</span>
+    </a>
+    <a class="btn btn-ghost" href="https://github.com/dmirtyisme/mick-jigger" target="_blank" rel="noopener">
+      <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      <span>GitHub</span>
+    </a>
+  </div>
+</main>
+
+<!-- ============ Score HUD ============ -->
+<aside class="hud" id="hud">
+  <div class="hud-label" data-i18n="hudLabel">Trail Score</div>
+  <div class="hud-score" id="hudScore">0</div>
+  <div class="hud-meters" id="hudMeters">0.0 m moved</div>
+</aside>
+
+<!-- ============ Dock ============ -->
+<nav class="dock-wrap">
+  <div class="dock" id="dock">
+    <button class="dock-item running" id="dockFinder" aria-label="Finder">
+      <span class="label">Finder</span>
+      <span class="tile finder">
+        <svg class="finder-face" viewBox="0 0 100 100">
+          <path d="M50 8 C 46 30, 44 52, 46 88" fill="none" stroke="rgba(10,40,90,0.55)" stroke-width="4"/>
+          <circle cx="32" cy="40" r="4.5" fill="#0A2A5A"/>
+          <circle cx="68" cy="40" r="4.5" fill="#0A2A5A"/>
+          <path d="M24 62 Q 50 78 76 62" fill="none" stroke="#0A2A5A" stroke-width="4.5" stroke-linecap="round"/>
+        </svg>
+      </span>
+    </button>
+    <button class="dock-item" id="dockMj" aria-label="Mick Jigger">
+      <span class="label">Mick Jigger</span>
+      <span class="tile mj"><span>MJ</span></span>
+    </button>
+    <button class="dock-item" id="dockNotes" aria-label="Notes">
+      <span class="label" data-i18n="dockNotes">Getting Started</span>
+      <span class="tile notes">📝</span>
+    </button>
+    <button class="dock-item" id="dockGithub" aria-label="GitHub">
+      <span class="label">GitHub</span>
+      <span class="tile github">
+        <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+      </span>
+    </button>
+  </div>
+</nav>
+
+<!-- ============ MJ Popover ============ -->
+<div class="popover" id="popover" role="dialog" aria-label="Mick Jigger">
+  <div class="pop-head">
+    <span class="title">Mick Jigger</span>
+    <span class="badge">DEMO</span>
+  </div>
+  <div class="pop-row">
+    <span class="status">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText" data-i18n="statusInactive">Inactive</span>
+    </span>
+    <button class="switch" id="mjSwitch" role="switch" aria-checked="false" aria-label="Toggle Mick Jigger"></button>
+  </div>
+  <div class="pop-section-label" data-i18n="intervalLabel">Jiggle interval</div>
+  <div class="segmented" id="intervalCtl">
+    <button data-sec="30" class="active">30s</button>
+    <button data-sec="60" data-i18n="int1m">1 min</button>
+    <button data-sec="120" data-i18n="int2m">2 min</button>
+    <button data-sec="300" data-i18n="int5m">5 min</button>
+  </div>
+  <div class="pop-section-label" data-i18n="activityLabel">Activity</div>
+  <div class="stats-grid">
+    <div class="stat"><div class="v" id="statSession">0:00</div><div class="k" data-i18n="statSession">Session</div></div>
+    <div class="stat"><div class="v" id="statJiggles">0</div><div class="k" data-i18n="statJiggles">Jiggles</div></div>
+    <div class="stat"><div class="v" id="statDistance">0.0m</div><div class="k" data-i18n="statDistance">Moved</div></div>
+  </div>
+  <p class="pop-foot" data-i18n="popFoot">Mick Jigger prevents your Mac from sleeping</p>
+</div>
+
+<!-- ============ Idle overlay ============ -->
+<div class="idle" id="idle">
+  <h2 id="idleTitle">Your Mac would go<br><span class="blue">idle right now.</span></h2>
+  <p data-i18n="idleSub">Mick Jigger prevents that — automatically.</p>
+  <div class="synthetic" aria-hidden="true">
+    <div class="path-hint"></div>
+    <div class="dot"></div>
+  </div>
+</div>
+
+<!-- ============ Notes modal ============ -->
+<div class="modal-backdrop" id="modalBackdrop"></div>
+<div class="notes-window" id="notesWindow" role="dialog" aria-modal="true" aria-label="Getting started">
+  <div class="notes-titlebar">
+    <div class="traffic">
+      <button class="red" id="notesClose" aria-label="Close"></button>
+      <button class="yellow" aria-label="Minimize"></button>
+      <button class="green" aria-label="Zoom"></button>
+    </div>
+    <span class="notes-title" data-i18n="notesTitle">Mick Jigger — Getting Started</span>
+  </div>
+  <div class="notes-body">
+    <ol id="notesSteps">
+      <li data-i18n="step1">Download the DMG from <strong>mickjigger.app</strong></li>
+      <li data-i18n="step2">Move <strong>Mick Jigger</strong> to Applications</li>
+      <li data-i18n="step3">Grant <strong>Accessibility</strong> permission</li>
+      <li data-i18n="step4">Grant <strong>Input Monitoring</strong> for activity tracking</li>
+      <li data-i18n="step5">Click the <strong>MJ</strong> icon in the menu bar to activate</li>
+    </ol>
+    <div class="notes-version">
+      <span>Mick Jigger</span>
+      <span>v1.1.0</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ================= i18n ================= */
+  var I18N = {
+    en: {
+      menuFile: "File", menuEdit: "Edit", menuView: "View",
+      eyebrow: "Mick Jigger for macOS",
+      heroTitle: "Your cursor<br>has <em>a story</em>",
+      subtitle: "Move your mouse. Watch it unfold.",
+      ctaDownload: "Download",
+      hudLabel: "Trail Score",
+      metersMoved: " m moved",
+      dockNotes: "Getting Started",
+      statusInactive: "Inactive", statusActive: "Active",
+      intervalLabel: "Jiggle interval",
+      int1m: "1 min", int2m: "2 min", int5m: "5 min",
+      activityLabel: "Activity",
+      statSession: "Session", statJiggles: "Jiggles", statDistance: "Moved",
+      popFoot: "Mick Jigger prevents your Mac from sleeping",
+      idleTitle: 'Your Mac would go<br><span class="blue">idle right now.</span>',
+      idleSub: "Mick Jigger prevents that — automatically.",
+      notesTitle: "Mick Jigger — Getting Started",
+      step1: 'Download the DMG from <strong>mickjigger.app</strong>',
+      step2: 'Move <strong>Mick Jigger</strong> to Applications',
+      step3: 'Grant <strong>Accessibility</strong> permission',
+      step4: 'Grant <strong>Input Monitoring</strong> for activity tracking',
+      step5: 'Click the <strong>MJ</strong> icon in the menu bar to activate'
+    },
+    ua: {
+      menuFile: "Файл", menuEdit: "Редагувати", menuView: "Перегляд",
+      eyebrow: "Mick Jigger для macOS",
+      heroTitle: "Твій курсор<br>має <em>історію</em>",
+      subtitle: "Рухай мишею. Дивись, як вона оживає.",
+      ctaDownload: "Завантажити",
+      hudLabel: "Рахунок сліду",
+      metersMoved: " м пройдено",
+      dockNotes: "Початок роботи",
+      statusInactive: "Неактивний", statusActive: "Активний",
+      intervalLabel: "Інтервал джиґлу",
+      int1m: "1 хв", int2m: "2 хв", int5m: "5 хв",
+      activityLabel: "Активність",
+      statSession: "Сесія", statJiggles: "Джиґли", statDistance: "Шлях",
+      popFoot: "Mick Jigger не дає вашому Mac заснути",
+      idleTitle: 'Твій Mac зараз би<br><span class="blue">заснув.</span>',
+      idleSub: "Mick Jigger цьому запобігає — автоматично.",
+      notesTitle: "Mick Jigger — Початок роботи",
+      step1: 'Завантажте DMG з <strong>mickjigger.app</strong>',
+      step2: 'Перетягніть <strong>Mick Jigger</strong> у Програми',
+      step3: 'Надайте дозвіл <strong>Універсальний доступ</strong>',
+      step4: 'Надайте <strong>Моніторинг вводу</strong> для відстеження активності',
+      step5: 'Натисніть іконку <strong>MJ</strong> у рядку меню, щоб активувати'
+    }
+  };
+  var lang = "en";
+
+  function applyLang() {
+    var dict = I18N[lang];
+    document.documentElement.lang = lang === "ua" ? "uk" : "en";
+    document.querySelectorAll("[data-i18n]").forEach(function (el) {
+      var key = el.getAttribute("data-i18n");
+      if (dict[key] !== undefined) el.innerHTML = dict[key];
+    });
+    document.getElementById("heroTitle").innerHTML = dict.heroTitle;
+    document.getElementById("idleTitle").innerHTML = dict.idleTitle;
+    // status text depends on current toggle state
+    document.getElementById("statusText").textContent = mjActive ? dict.statusActive : dict.statusInactive;
+    document.getElementById("langEn").classList.toggle("active", lang === "en");
+    document.getElementById("langUa").classList.toggle("active", lang === "ua");
+    updateHud();
+    renderClock();
+  }
+  document.getElementById("langEn").addEventListener("click", function () { lang = "en"; applyLang(); });
+  document.getElementById("langUa").addEventListener("click", function () { lang = "ua"; applyLang(); });
+
+  /* ================= Clock ================= */
+  var clockEl = document.getElementById("clock");
+  function renderClock() {
+    var now = new Date();
+    var locale = lang === "ua" ? "uk-UA" : "en-US";
+    var date = now.toLocaleDateString(locale, { weekday: "short", month: "short", day: "numeric" });
+    var time = now.toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit" });
+    clockEl.textContent = date + "  " + time;
+  }
+  renderClock();
+  setTimeout(function () {
+    renderClock();
+    setInterval(renderClock, 60000);
+  }, (60 - new Date().getSeconds()) * 1000);
+
+  /* ================= Trail canvas ================= */
+  var canvas = document.getElementById("trail");
+  var ctx = canvas.getContext("2d");
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+  function resize() {
+    canvas.width = Math.floor(innerWidth * dpr);
+    canvas.height = Math.floor(innerHeight * dpr);
+    canvas.style.width = innerWidth + "px";
+    canvas.style.height = innerHeight + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }
+  resize();
+  window.addEventListener("resize", resize);
+
+  var prev = null;      // previous point {x, y, t}
+  var prevMid = null;   // previous midpoint for smooth beziers
+  var totalPx = 0;
+  var moved = false;
+
+  // px → meters (assume ~96 dpi: 1px ≈ 0.264583 mm)
+  var PX_TO_M = 0.000264583;
+
+  function drawSegment(x, y) {
+    var now = performance.now();
+    if (!prev) {
+      prev = { x: x, y: y, t: now };
+      prevMid = { x: x, y: y };
+      return;
+    }
+    var dx = x - prev.x, dy = y - prev.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < 1) return;
+
+    var dt = Math.max(now - prev.t, 1);
+    var speed = dist / dt; // px per ms
+    totalPx += dist;
+
+    // Speed shapes the stroke: fast = thick & bright
+    var w = Math.min(1.2 + speed * 3.2, 9);
+    var a = Math.min(0.18 + speed * 0.5, 0.95);
+
+    var mid = { x: (prev.x + x) / 2, y: (prev.y + y) / 2 };
+
+    // Outer glow pass
+    ctx.strokeStyle = "rgba(43, 91, 255, " + (a * 0.28).toFixed(3) + ")";
+    ctx.lineWidth = w * 2.6;
+    ctx.beginPath();
+    ctx.moveTo(prevMid.x, prevMid.y);
+    ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
+    ctx.stroke();
+
+    // Core pass
+    ctx.strokeStyle = "rgba(72, 116, 255, " + a.toFixed(3) + ")";
+    ctx.lineWidth = w;
+    ctx.beginPath();
+    ctx.moveTo(prevMid.x, prevMid.y);
+    ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
+    ctx.stroke();
+
+    prev = { x: x, y: y, t: now };
+    prevMid = mid;
+
+    if (!moved) {
+      moved = true;
+      hud.classList.add("visible");
+    }
+    updateHud();
+  }
+
+  // Slow fade — erase alpha so the ambient background stays visible
+  function fadeLoop() {
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = "destination-out";
+    ctx.fillStyle = "rgba(0, 0, 0, 0.04)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.restore();
+    requestAnimationFrame(fadeLoop);
+  }
+  requestAnimationFrame(fadeLoop);
+
+  /* ================= Custom cursor ================= */
+  var cursorEl = document.getElementById("cursor");
+  var HOVERABLE = "a, button, .dock-item, .switch, .segmented button, .lang-toggle button, .traffic button";
+
+  document.addEventListener("mouseover", function (e) {
+    cursorEl.classList.toggle("hover", !!e.target.closest(HOVERABLE));
+  });
+
+  /* ================= Score HUD ================= */
+  var hud = document.getElementById("hud");
+  var hudScore = document.getElementById("hudScore");
+  var hudMeters = document.getElementById("hudMeters");
+
+  function updateHud() {
+    var meters = totalPx * PX_TO_M;
+    hudScore.textContent = Math.round(totalPx / 10).toLocaleString(lang === "ua" ? "uk-UA" : "en-US");
+    hudMeters.textContent = meters.toFixed(1) + I18N[lang].metersMoved;
+    statDistance.textContent = meters.toFixed(1) + (lang === "ua" ? "м" : "m");
+  }
+
+  /* ================= Idle overlay ================= */
+  var idleEl = document.getElementById("idle");
+  var idleTimer = null;
+  var IDLE_MS = 5000;
+
+  function armIdle() {
+    clearTimeout(idleTimer);
+    if (idleEl.classList.contains("show")) idleEl.classList.remove("show");
+    idleTimer = setTimeout(function () {
+      idleEl.classList.add("show");
+    }, IDLE_MS);
+  }
+  armIdle(); // starts counting from page load
+
+  /* ================= Pointer handling ================= */
+  function onMove(x, y) {
+    cursorEl.classList.add("on");
+    cursorEl.style.transform = "translate(" + (x - 4) + "px, " + (y - 4) + "px)";
+    drawSegment(x, y);
+    armIdle();
+  }
+  document.addEventListener("mousemove", function (e) { onMove(e.clientX, e.clientY); });
+  document.addEventListener("touchmove", function (e) {
+    var t = e.touches[0];
+    if (t) onMove(t.clientX, t.clientY);
+  }, { passive: true });
+  document.addEventListener("touchstart", function (e) {
+    var t = e.touches[0];
+    if (t) { prev = null; onMove(t.clientX, t.clientY); }
+  }, { passive: true });
+  document.addEventListener("mouseleave", function () { prev = null; });
+
+  /* ================= Popover ================= */
+  var popover = document.getElementById("popover");
+  var mjMenuIcon = document.getElementById("mjMenuIcon");
+  var dockMj = document.getElementById("dockMj");
+
+  function togglePopover(force) {
+    var open = force !== undefined ? force : !popover.classList.contains("open");
+    popover.classList.toggle("open", open);
+    mjMenuIcon.classList.toggle("open", open);
+  }
+  mjMenuIcon.addEventListener("click", function (e) { e.stopPropagation(); togglePopover(); });
+  dockMj.addEventListener("click", function (e) { e.stopPropagation(); togglePopover(); });
+  document.addEventListener("click", function (e) {
+    if (!popover.contains(e.target)) togglePopover(false);
+  });
+
+  /* ---- Toggle switch + status ---- */
+  var mjActive = false;
+  var mjSwitch = document.getElementById("mjSwitch");
+  var statusDot = document.getElementById("statusDot");
+  var statusText = document.getElementById("statusText");
+  var jiggles = 0;
+  var jiggleInterval = 30; // seconds
+  var jiggleTimer = null;
+
+  function setActive(on) {
+    mjActive = on;
+    mjSwitch.classList.toggle("on", on);
+    mjSwitch.setAttribute("aria-checked", on ? "true" : "false");
+    statusDot.classList.toggle("on", on);
+    statusText.textContent = on ? I18N[lang].statusActive : I18N[lang].statusInactive;
+    dockMj.classList.toggle("running", on);
+    scheduleJiggle();
+  }
+  function scheduleJiggle() {
+    clearInterval(jiggleTimer);
+    if (!mjActive) return;
+    jiggleTimer = setInterval(function () {
+      jiggles++;
+      statJiggles.textContent = jiggles;
+    }, jiggleInterval * 1000);
+  }
+  mjSwitch.addEventListener("click", function () { setActive(!mjActive); });
+
+  /* ---- Segmented interval control ---- */
+  var intervalCtl = document.getElementById("intervalCtl");
+  intervalCtl.addEventListener("click", function (e) {
+    var btn = e.target.closest("button");
+    if (!btn) return;
+    intervalCtl.querySelectorAll("button").forEach(function (b) { b.classList.remove("active"); });
+    btn.classList.add("active");
+    jiggleInterval = parseInt(btn.getAttribute("data-sec"), 10);
+    scheduleJiggle();
+  });
+
+  /* ---- Activity stats ---- */
+  var statSession = document.getElementById("statSession");
+  var statJiggles = document.getElementById("statJiggles");
+  var statDistance = document.getElementById("statDistance");
+  var sessionStart = Date.now();
+
+  setInterval(function () {
+    var s = Math.floor((Date.now() - sessionStart) / 1000);
+    var m = Math.floor(s / 60);
+    statSession.textContent = m + ":" + String(s % 60).padStart(2, "0");
+  }, 1000);
+
+  /* ================= Notes modal ================= */
+  var notesWindow = document.getElementById("notesWindow");
+  var modalBackdrop = document.getElementById("modalBackdrop");
+
+  function toggleNotes(open) {
+    notesWindow.classList.toggle("open", open);
+    modalBackdrop.classList.toggle("open", open);
+    document.getElementById("dockNotes").classList.toggle("running", open);
+  }
+  document.getElementById("dockNotes").addEventListener("click", function () { toggleNotes(true); });
+  document.getElementById("notesClose").addEventListener("click", function () { toggleNotes(false); });
+  modalBackdrop.addEventListener("click", function () { toggleNotes(false); });
+
+  /* ================= Dock behavior ================= */
+  document.getElementById("dockGithub").addEventListener("click", function () {
+    window.open("https://github.com/dmirtyisme/mick-jigger", "_blank", "noopener");
+  });
+
+  // Proximity magnification, macOS style
+  var dock = document.getElementById("dock");
+  var dockItems = Array.prototype.slice.call(dock.querySelectorAll(".dock-item"));
+
+  dock.addEventListener("mousemove", function (e) {
+    dockItems.forEach(function (item) {
+      var r = item.getBoundingClientRect();
+      var center = r.left + r.width / 2;
+      var d = Math.abs(e.clientX - center);
+      var scale = 1 + Math.max(0, 0.55 * Math.exp(-(d * d) / (2 * 70 * 70)));
+      item.style.transform = "scale(" + scale.toFixed(3) + ") translateY(" + (-(scale - 1) * 8).toFixed(1) + "px)";
+    });
+  });
+  dock.addEventListener("mouseleave", function () {
+    dockItems.forEach(function (item) { item.style.transform = ""; });
+  });
+
+  /* ================= Keyboard ================= */
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      togglePopover(false);
+      toggleNotes(false);
+    }
+    armIdle();
+  });
+
+  applyLang();
+})();
+</script>
+</body>
+</html>
